@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Controle de Exumações - Niterói</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .tab-btn.active { background-color: #0056b3 !important; color: white !important; border-bottom: 3px solid #003d80; font-weight: bold; }
+        .modal-footer-custom { display: flex; justify-content: center; align-items: center; padding-top: 15px; border-top: 1px solid #eee; flex-wrap: wrap; gap: 8px; }
+        .modal-footer-custom button { padding: 8px 12px; font-size: 13px; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px; color: white; font-weight: 500; flex-grow: 1; justify-content: center; max-width: 180px; min-width: 120px; }
+        .btn-print-req { background-color: #e67e22; }
+        .btn-print-lib { background-color: #27ae60; }
+        .btn-close { background-color: #95a5a6; }
+        .section-title { font-size: 11px; font-weight: 800; color: #3699ff; text-transform: uppercase; margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 5px; grid-column: span 4; }
+        .btn-liberar-circle { background-color: #e8f5e9; color: #2e7d32; }
+        
+        /* CSS DA ASSINATURA DIGITAL */
+        canvas#signature-pad { border: 2px dashed #ccc; background-color: #fff; touch-action: none; border-radius: 5px; cursor: crosshair; width: 100%; }
+        .btn-sign-fam { background-color: #663399; }
+        .btn-sign-func { background-color: #8e44ad; }
+
+        @media (max-width: 768px) { .modal-footer-custom { padding-bottom: 20px; } .modal-footer-custom button { max-width: 48%; } }
+    </style>
+</head>
+<body>
+
+    <div id="tela-bloqueio" class="bloqueio-container">
+        <div class="bloqueio-box">
+            <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo">
+            <h3>Controle de Acesso</h3>
+            <p>Identifique-se para continuar</p>
+            <input type="text" id="login-usuario" placeholder="Usuário" style="margin-bottom: 10px;">
+            <input type="password" id="login-senha" placeholder="Senha" onkeypress="checarLoginEnter(event)">
+            <button onclick="fazerLogin()" class="btn-novo" style="width:100%; justify-content: center; margin-top: 15px;">🔓 Entrar</button>
+            <p id="msg-erro-login" style="color: red; display: none; margin-top: 10px; font-weight:bold;">Dados incorretos!</p>
+        </div>
+    </div>
+
+    <header class="header-prefeitura">
+        <div class="logo-area">
+            <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Prefeitura de Niterói" id="logo-principal">
+            <div class="titulo-area">
+                <h3 style="margin-left: 10px; border-left: 2px solid #999; padding-left: 15px;">Serviços Funerários<br><span style="color:#3699ff; font-weight:800;">EXUMAÇÕES</span></h3>
+            </div>
+        </div>
+        
+        <div class="info-area">
+            <div class="controles-topo">
+                <div class="topo-box search-box"><input type="text" id="input-busca" placeholder="Buscar Nome ou Protocolo..."><button onclick="realizarBusca()" class="btn-search" title="Pesquisar">🔍</button></div>
+            </div>
+            <div class="user-controls">
+                <span id="user-display"></span>
+                <button onclick="fazerLogout()" class="btn-header btn-exit" title="Sair">🚪 Sair</button>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-content">
+        <div class="controles">
+            <button onclick="abrirModalGRM()" class="btn-novo" style="background-color: #27ae60; margin-right: 10px;">💸 Emitir GRM</button>
+            <button onclick="abrirModal()" class="btn-novo">+ Novo Requerimento</button>
+        </div>
+
+        <div class="tabela-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="min-width: 200px;">Requerente / Contato</th>
+                        <th style="min-width: 200px;">Falecido(a)</th>
+                        <th>Cemitério</th>
+                        <th>Serviço Requerido</th>
+                        <th style="min-width: 140px;">Protocolo / Processo</th>
+                        <th>Data Registro</th>
+                        <th style="text-align: right; min-width: 150px;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-corpo"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Registro de Requerimento</h3>
+                <span class="close" onclick="fecharModal()">×</span>
+            </div>
+            
+            <form id="form-atendimento">
+                <input type="hidden" id="docId"> 
+                <input type="hidden" id="protocolo"> 
+                <input type="hidden" id="atendente_sistema"> 
+                
+                <div class="form-grid" style="max-height: 60vh; overflow-y: auto; padding-right: 10px; padding: 30px;">
+                    
+                    <div class="section-title">Dados do Requerente</div>
+                    <div class="input-group span-2"><label>Nome do Requerente</label><input type="text" id="resp_nome" required></div>
+                    <div class="input-group span-1"><label>Telefone</label><input type="text" id="telefone" required></div>
+                    <div class="input-group span-1"><label>Grau Parentesco</label><input type="text" id="parentesco" required></div>
+                    
+                    <div class="input-group span-2"><label>Endereço</label><input type="text" id="endereco" required></div>
+                    <div class="input-group span-1"><label>Bairro</label><input type="text" id="bairro" required></div>
+                    <div class="input-group span-1"><label>Município</label><input type="text" id="municipio" required></div>
+                    
+                    <div class="input-group span-1"><label>CEP</label><input type="text" id="cep" placeholder="00000-000" maxlength="9" onblur="buscarCep()"></div>
+                    <div class="input-group span-1"><label>Número</label><input type="text" id="numero" required></div>
+                    <div class="input-group span-2"><label>Complemento</label><input type="text" id="complemento" placeholder="Ex: Apto 101, Bloco B..."></div>
+                    
+                    <div class="section-title">Dados do Falecido(a)</div>
+                    <div class="input-group span-2"><label>Nome do(a) Falecido(a)</label><input type="text" id="nome_falecido" required></div>
+                    <div class="input-group span-1"><label>Data Sepultamento</label><input type="date" id="data_sepultamento" required></div>
+                    <div class="input-group span-1"><label>Cemitério</label>
+                        <select id="cemiterio" required>
+                            <option value="MARUÍ">MARUÍ</option>
+                            <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
+                            <option value="ITAIPU">ITAIPU</option>
+                        </select>
+                    </div>
+
+                    <div class="section-title">Serviços e Localização (Requerimento)</div>
+                    <div class="input-group span-2"><label>Serviço Requerido</label>
+                        <select id="servico_requerido" required>
+                            <option value="Exumação">Exumação</option>
+                            <option value="Saída de ossos">Saída de ossos</option>
+                            <option value="Entrada de ossos / cinzas">Entrada de ossos / cinzas</option>
+                            <option value="Permissão de uso">Permissão de uso</option>
+                            <option value="Recolhimento">Recolhimento</option>
+                            <option value="Permuta">Permuta</option>
+                            <option value="Certidão">Certidão</option>
+                            <option value="Revestimento">Revestimento</option>
+                            <option value="Outros">Outros</option>
+                        </select>
+                    </div>
+                    <div class="input-group span-2"><label>Tipo de Sepultura</label>
+                        <select id="tipo_sepultura" required>
+                            <option value="Carneiro de adulto">Carneiro de adulto</option>
+                            <option value="Carneiro de anjo">Carneiro de anjo</option>
+                            <option value="Gaveta de adulto">Gaveta de adulto</option>
+                            <option value="Gaveta de anjo">Gaveta de anjo</option>
+                            <option value="Cova rasa de adulto">Cova rasa de adulto</option>
+                            <option value="Cova rasa de anjo">Cova rasa de anjo</option>
+                            <option value="Nicho">Nicho</option>
+                            <option value="Nicho perpétuo">Nicho perpétuo</option>
+                            <option value="Sep perpétua">Sep perpétua</option>
+                        </select>
+                    </div>
+                    <div class="input-group span-1"><label>Nº Sepultura</label><input type="text" id="sepul" required></div>
+                    <div class="input-group span-1"><label>Quadra</label><input type="text" id="qd" placeholder="A, B, F, G, E..."></div>
+                    <div class="input-group span-2"><label>Proprietário (Se Perpétua)</label><input type="text" id="proprietario"></div>
+                    <div class="input-group span-4"><label>Assunto / Observações</label><input type="text" id="assunto" placeholder="Detalhes adicionais do requerimento"></div>
+                </div>
+                <div class="modal-footer-custom" style="padding:20px 30px;">
+                    <button type="button" class="btn-modal btn-cancelar" onclick="fecharModal()">Cancelar</button>
+                    <button type="submit" class="btn-modal btn-salvar">Salvar Requerimento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-liberacao" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 style="color: var(--danger);">Dados Administrativos (Liberação)</h3>
+                <span class="close" onclick="fecharModalLiberacao()">×</span>
+            </div>
+            
+            <form id="form-liberacao">
+                <input type="hidden" id="docIdLiberacao"> 
+                
+                <div class="form-grid" style="padding: 30px;">
+                    <p class="span-4" style="font-size: 11px; color: #666; margin-top:0;">Estes dados ficarão vinculados ao requerimento atual e sairão impressos no formulário de Liberação.</p>
+                    
+                    <div class="input-group span-2"><label>Processo Nº</label><input type="text" id="processo" required></div>
+                    <div class="input-group span-2"><label>GRM Nº</label><input type="text" id="grm" required></div>
+                    <div class="input-group span-4"><label>Quantia Paga (R$)</label><input type="text" id="valor_pago" placeholder="Ex: 45,72 (Quarenta e cinco reais e setenta...)" required></div>
+                    <div class="input-group span-4"><label>Texto "Referente a:"</label>
+                        <textarea id="referente_a" rows="4" placeholder="Ex: EXUMAÇÃO E SAÍDA DE OSSOS DA GAVETA DE ADULTO N°383 ONDE FOI INUMADO..." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer-custom" style="padding:20px 30px;">
+                    <button type="button" class="btn-modal btn-cancelar" onclick="fecharModalLiberacao()">Cancelar</button>
+                    <button type="submit" class="btn-modal btn-salvar" style="background-color: var(--danger);">Salvar Liberação</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-visualizar" class="modal">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header"><h3>Ações do Requerimento</h3><span class="close" onclick="fecharModalVisualizar()">×</span></div>
+            
+            <div id="resumo-dados" style="padding: 20px 30px; background-color: #f8f9fb; border-bottom: 1px solid #ebedf3; font-size: 13px; line-height: 1.6;"></div>
+
+            <div style="padding: 20px; text-align: center;">
+                <p style="margin-bottom: 20px; color: #555; font-size: 12px;">Confira os dados acima. Selecione qual documento deseja gerar ou colete a assinatura digital.</p>
+                <div class="modal-footer-custom" style="border:none; justify-content: center;">
+                    <button type="button" class="btn-modal btn-sign-fam" onclick="abrirModalAssinatura('responsavel')">✍️ Assinar Requerente</button>
+                    <button type="button" class="btn-modal btn-sign-func" onclick="abrirModalAssinatura('atendente')">✍️ Assinar Equipe</button>
+                    <button type="button" class="btn-modal btn-print-req" onclick="imprimirRequerimento()">📄 Imprimir Requerimento</button>
+                    <button type="button" class="btn-modal btn-print-lib" onclick="imprimirLiberacao()">📄 Imprimir Liberação</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-assinatura" class="modal">
+        <div class="modal-content" style="max-width: 500px; text-align: center;">
+            <h3 id="titulo-assinatura">Assinatura</h3>
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Assine abaixo usando o dedo ou mouse.</p>
+            <div style="border: 2px solid #333; background: #fff; display: inline-block;">
+                <canvas id="signature-pad" width="400" height="200"></canvas>
+            </div>
+            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                <button onclick="limparAssinatura()" class="btn-modal btn-cancelar" style="background: #f44336; color: white;">Limpar</button>
+                <button onclick="salvarAssinatura()" class="btn-modal btn-salvar">Confirmar</button>
+            </div>
+            <button onclick="fecharModalAssinatura()" class="close" style="position: absolute; top: 10px; right: 15px;">×</button>
+        </div>
+    </div>
+
+    <div id="modal-grm" class="modal">
+        <div class="modal-content" style="width: 95%; max-width: 1200px; height: 90vh; display: flex; flex-direction: column; padding: 0; overflow: hidden;">
+            <div class="modal-header" style="background-color: #f8f9fb; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <h3 style="margin: 0; color: #333;">Emissão de GRM</h3>
+                    <button onclick="window.open('http://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento', '_blank')" class="btn-novo" style="background-color: #f39c12; padding: 6px 12px; font-size: 11px;">🔗 Abrir em Nova Aba</button>
+                </div>
+                <span class="close" onclick="fecharModalGRM()" style="margin-top: -5px;">×</span>
+            </div>
+            <div style="flex-grow: 1; width: 100%; background: #fff;">
+                <iframe src="http://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
