@@ -12,6 +12,7 @@
             --accent-green: #28a745; /* Estoque */
             --accent-blue: #0056b3; /* Admin Funerário */
             --accent-orange: #fd7e14; /* Consulta Pública */
+            --accent-purple: #6f42c1; /* Exumações */
             --hover-shadow: 0 8px 16px rgba(0,0,0,0.1);
         }
 
@@ -75,7 +76,7 @@
             width: 64px;
             height: 64px;
             margin-bottom: 1rem;
-            fill: currentColor; /* Pega a cor definida no CSS do card */
+            fill: currentColor;
         }
 
         .card h2 {
@@ -91,7 +92,7 @@
         }
 
         /* Cores Específicas */
-        .card.stock { color: #555; } /* Cor padrão do texto */
+        .card.stock { color: #555; } 
         .card.stock:hover { border-color: var(--accent-green); }
         .card.stock .icon-svg { color: var(--accent-green); }
 
@@ -102,6 +103,10 @@
         .card.public { color: #555; }
         .card.public:hover { border-color: var(--accent-orange); }
         .card.public .icon-svg { color: var(--accent-orange); }
+
+        .card.exumacao { color: #555; }
+        .card.exumacao:hover { border-color: var(--accent-purple); }
+        .card.exumacao .icon-svg { color: var(--accent-purple); }
 
         .footer {
             margin-top: 3rem;
@@ -149,6 +154,14 @@
             </svg>
             <h2>Consulta Sepultamento</h2>
             <p>Acesso ao Contribuinte</p>
+        </a>
+
+        <a href="https://semobiniteroi.github.io/meus-projetos/exumacoes/" class="card exumacao" target="_blank">
+            <svg class="icon-svg" viewBox="0 0 24 24">
+                <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
+            </svg>
+            <h2>Exumações</h2>
+            <p>Gestão de Exumações</p>
         </a>
     </div>
 
