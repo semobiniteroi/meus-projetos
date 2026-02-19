@@ -1,0 +1,70 @@
+:root {
+    --primary-color: #3699ff; 
+    --primary-light: #e1f0ff;
+    --text-dark: #3f4254;
+    --text-muted: #b5b5c3;
+    --bg-body: #f3f6f9;
+    --bg-card: #ffffff;
+    --success: #1bc5bd;
+    --danger: #f64e60;
+    --danger-light: #ffe2e5;
+    --border-radius: 10px;
+    --shadow: 0 0 20px 0 rgba(76, 87, 125, 0.02);
+    --excel-red: #c0392b; 
+    --excel-black: #000000;
+}
+body { font-family: 'Poppins', 'Roboto', sans-serif; background-color: var(--bg-body); color: var(--text-dark); margin: 0; padding-bottom: 50px; font-size: 13px; transition: background-color 0.3s; }
+.hidden { display: none !important; }
+.header-prefeitura { background-color: var(--bg-card); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 0 40px 0 rgba(82,63,105,0.1); margin-bottom: 20px; border-bottom: 1px solid #ebedf3; flex-wrap: nowrap; gap: 15px; height: 70px; }
+.logo-area { display: flex; align-items: center; gap: 15px; flex-shrink: 0; }
+.logo-area img { height: auto; max-height: 50px; max-width: 200px; object-fit: contain; }
+.titulo-area { text-align: left; }
+.titulo-area h3 { margin: 2px 0; font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; border-left: 2px solid #ccc; padding-left: 10px; }
+.info-area { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 10px; flex-grow: 1; }
+.user-controls { display: flex; align-items: center; gap: 8px; padding-left: 10px; border-left: 1px solid #eee; flex-shrink: 0; }
+.controles-topo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.topo-box { height: 34px; display: flex; align-items: center; background: #fff; padding: 0 8px; border-radius: 6px; border: 1px solid #e4e6ef; box-shadow: 0 1px 2px rgba(0,0,0,0.02); gap: 5px; }
+.search-box { background-color: #f8f9fa; border-color: #d1d3e0; padding: 0; }
+.search-box input { padding: 0 8px; width: 180px; background: transparent; border: none; height: 100%; outline: none; font-size: 12px; }
+.btn-search { background: transparent; border: none; font-size: 14px; cursor: pointer; padding: 0 10px; color: var(--primary-color); height: 100%; border-left: 1px solid #eee; display: flex; align-items: center; }
+.btn-header { height: 32px; padding: 0 12px; border: none; border-radius: 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; color: white; }
+.btn-exit { background-color: var(--danger); }
+#user-display { font-size: 11px; font-weight: 800; color: var(--primary-color); text-transform: uppercase; margin-right: 5px; white-space: nowrap; }
+.main-content { max-width: 98%; margin: 0 auto; }
+.controles { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 20px; }
+.tabela-container { background: var(--bg-card); border-radius: var(--border-radius); box-shadow: var(--shadow); padding: 0; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { background-color: #f8f9fb; color: var(--text-muted); padding: 15px 20px; text-align: left; font-size: 11px; font-weight: 700; border-bottom: 1px solid #ebedf3; }
+td { padding: 15px 20px; border-bottom: 1px solid #ebedf3; color: var(--text-dark); font-size: 12px; font-weight: 600; }
+tbody tr:hover { background-color: #f4f6f9; cursor: pointer; }
+.btn-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; cursor: pointer; padding: 0; }
+.btn-editar-circle { background-color: var(--primary-light); color: var(--primary-color); }
+.btn-excluir-circle { background-color: var(--danger-light); color: var(--danger); }
+.modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.3); backdrop-filter: blur(2px); overflow-y: auto; }
+.modal-content { background-color: #fff; margin: 3% auto; width: 750px; max-width: 95%; border-radius: var(--border-radius); box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+.modal-header { padding: 20px 30px; border-bottom: 1px solid #ebedf3; display: flex; justify-content: space-between; align-items: center; }
+#form-atendimento { padding: 30px; }
+.form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.input-group { display: flex; flex-direction: column; gap: 8px; }
+.span-1 { grid-column: span 1; } .span-2 { grid-column: span 2; } .span-3 { grid-column: span 3; } .span-4 { grid-column: span 4; }
+label { font-size: 12px; font-weight: 600; }
+input:not([type="checkbox"]), textarea, select { padding: 10px 15px; border: 1px solid #e4e6ef; border-radius: 6px; background-color: #f3f6f9; width: 100%; box-sizing: border-box; }
+.btn-modal { height: 36px; padding: 0 15px; border-radius: 6px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn-cancelar { background-color: #eee; color: #333; }
+.btn-salvar { background-color: var(--primary-color); color: white; }
+.bloqueio-container { display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(30, 30, 45, 0.98); z-index: 10000; align-items: center; justify-content: center; }
+.bloqueio-box { background: white; padding: 40px; border-radius: 10px; text-align: center; width: 300px; }
+.btn-novo { background-color: var(--primary-color); color: white; border: none; border-radius: 6px; padding: 10px 20px; font-weight: 600; cursor: pointer; }
+.close { font-size: 24px; cursor: pointer; font-weight: bold; color: #999; }
+
+@media only screen and (max-width: 768px) {
+    .header-prefeitura { flex-direction: column; height: auto; padding: 15px; gap: 10px; }
+    .logo-area { width: 100%; justify-content: center; margin-bottom: 10px; }
+    .info-area, .controles-topo, .topo-box, .search-box { width: 100%; }
+    .search-box input { width: 100%; flex: 1; }
+    .main-content { padding: 10px; margin-top: 20px; }
+    .tabela-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { min-width: 1000px; }
+    .form-grid { grid-template-columns: 1fr; gap: 10px; }
+    .input-group.span-1, .input-group.span-2, .input-group.span-3, .input-group.span-4 { grid-column: span 1 !important; }
+}
