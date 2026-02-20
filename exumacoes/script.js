@@ -10,6 +10,10 @@ const firebaseConfig = {
 
 let db = null;
 let unsubscribe = null;
+let equipeUnsubscribe = null;
+let logsUnsubscribe = null;
+let chartInstances = {};
+let dadosEstatisticasExportacao = [];
 let usuarioLogado = null; 
 let dadosAtendimentoAtual = null;
 
@@ -40,6 +44,11 @@ function safeDisplay(id, displayType) { const el = document.getElementById(id); 
 function pegarDataAtualLocal() { const agora = new Date(); return `${String(agora.getDate()).padStart(2,'0')}/${String(agora.getMonth()+1).padStart(2,'0')}/${agora.getFullYear()}`; }
 function formatarDataInversa(dataStr) { if (!dataStr) return ""; const p = dataStr.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
 
+function pegarDataISO() { 
+    const agora = new Date(); 
+    return `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}-${String(agora.getDate()).padStart(2,'0')}`; 
+}
+
 // FUNÇÃO PARA GERAR O PROTOCOLO
 window.gerarProtocolo = function() {
     const agora = new Date();
@@ -49,12 +58,13 @@ window.gerarProtocolo = function() {
     return `${ano}${mes}${dia}-${String(agora.getHours()).padStart(2,'0')}${String(agora.getMinutes()).padStart(2,'0')}`;
 }
 
-// --- LÓGICA DO MODAL GRM ---
-window.abrirModalGRM = function() {
-    safeDisplay('modal-grm', 'block');
+// --- LÓGICA DA EMISSÃO DE GRM (RETORNO AO IFRAME SEGURO DA PREFEITURA) ---
+window.abrirModalGRM = function() { 
+    safeDisplay('modal-grm', 'block'); 
 }
-window.fecharModalGRM = function() {
-    safeDisplay('modal-grm', 'none');
+
+window.fecharModalGRM = function() { 
+    safeDisplay('modal-grm', 'none'); 
 }
 
 // --- LÓGICA DE ASSINATURA DIGITAL ---
@@ -82,7 +92,7 @@ function setupSignaturePad() {
     function endDraw(e) { if(e.type === 'touchend') e.preventDefault(); isDrawing = false; }
 
     canvas.removeEventListener('mousedown', startDraw); canvas.removeEventListener('mousemove', draw); canvas.removeEventListener('mouseup', endDraw); canvas.removeEventListener('mouseout', endDraw); canvas.removeEventListener('touchstart', startDraw); canvas.removeEventListener('touchmove', draw); canvas.removeEventListener('touchend', endDraw);
-    canvas.addEventListener('mousedown', startDraw); canvas.addEventListener('mousemove', draw); canvas.addEventListener('mouseup', endDraw); canvas.addEventListener('mouseout', endDraw); canvas.addEventListener('touchstart', startDraw, { passive: false }); canvas.addEventListener('touchmove', draw, { passive: false }); canvas.addEventListener('touchend', endDraw, { passive: false });
+    canvas.addEventListener('mousedown', startDraw); canvas.addEventListener('mousemove', draw); canvas.addEventListener('mouseup', endDraw); canvas.addEventListener('mouseout', endDraw); canvas.addEventListener('touchstart', startDraw, { passive: false }); canvas.addEventListener('touchmove', draw, { passive: false }); canvas.addEventListener('touch সম্মেলন', endDraw, { passive: false });
 }
 
 window.abrirModalAssinatura = function(tipo) {
@@ -95,11 +105,7 @@ window.abrirModalAssinatura = function(tipo) {
 }
 
 window.fecharModalAssinatura = function() { safeDisplay('modal-assinatura', 'none'); }
-
-window.limparAssinatura = function() {
-    const canvas = document.getElementById('signature-pad');
-    if(canvas) { const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height); }
-}
+window.limparAssinatura = function() { const canvas = document.getElementById('signature-pad'); if(canvas) { const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height); } }
 
 window.salvarAssinatura = function() {
     const canvas = document.getElementById('signature-pad');
@@ -118,6 +124,15 @@ window.salvarAssinatura = function() {
                 dadosAtendimentoAtual.assinatura_atendente = imgData; 
                 updateData = { assinatura_atendente: imgData };
             }
+            
+            db.collection("auditoria").add({ 
+                data_log: new Date().toISOString(), 
+                usuario: usuarioLogado ? usuarioLogado.nome : 'Anon', 
+                acao: "ASSINATURA", 
+                detalhe: `Req ID: ${dadosAtendimentoAtual.id} (${tipoAssinaturaAtual})`,
+                sistema: "Exumacao" 
+            });
+            
             db.collection("requerimentos_exumacao").doc(dadosAtendimentoAtual.id).update(updateData).then(() => {
                 console.log("Assinatura salva.");
                 window.visualizarDocumentos(dadosAtendimentoAtual.id);
@@ -178,17 +193,260 @@ window.liberarAcesso = function() {
     safeDisplay('tela-bloqueio', 'none');
     sessionStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
     document.getElementById('user-display').innerText = usuarioLogado.nome;
+    
+    const fd = document.getElementById('filtro-data');
+    if(fd && !fd.value) fd.value = pegarDataISO();
+    
     carregarTabela();
 }
 
 window.fazerLogout = function() { sessionStorage.removeItem('usuarioLogado'); window.location.reload(); }
 
-// --- TABELA E BUSCA ---
+// --- LÓGICA DO ADMIN ---
+window.abrirAdmin = function() { safeDisplay('modal-admin', 'block'); window.abrirAba('tab-equipe'); }
+window.fecharModalAdmin = function() { safeDisplay('modal-admin', 'none'); }
+
+window.abrirAba = function(id) {
+    Array.from(document.getElementsByClassName('tab-pane')).forEach(e => e.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    
+    const buttons = document.querySelectorAll('.tab-header .tab-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    
+    if (id === 'tab-equipe') buttons[0].classList.add('active');
+    if (id === 'tab-stats') buttons[1].classList.add('active');
+    if (id === 'tab-logs') buttons[2].classList.add('active');
+
+    if(id==='tab-equipe') window.listarEquipe();
+    if(id==='tab-logs') window.carregarLogs();
+    if(id==='tab-stats') window.carregarEstatisticas('7');
+}
+
+window.listarEquipe = function() {
+    const database = getDB();
+    const ul = document.getElementById('lista-equipe');
+    if(!database || !ul) return;
+    
+    if (equipeUnsubscribe) equipeUnsubscribe();
+    equipeUnsubscribe = database.collection("equipe").orderBy("nome").onSnapshot(snap => {
+        ul.innerHTML = '';
+        snap.forEach(doc => {
+            const u = doc.data();
+            ul.innerHTML += `<li>
+                <span style="flex-grow:1;"><b>${u.nome}</b> <span style="color:#888; font-size:11px;">(${u.login})</span></span>
+                <div>
+                    <button class="btn-icon" onclick="window.editarFuncionario('${doc.id}')" style="margin-right:5px; cursor:pointer;" title="Editar">✏️</button>
+                    <button class="btn-icon" onclick="window.excluirFuncionario('${doc.id}')" style="color:red; cursor:pointer;" title="Excluir">🗑️</button>
+                </div>
+            </li>`;
+        });
+    });
+}
+
+window.adicionarFuncionario = function() {
+    const nome = document.getElementById('novo-nome').value;
+    const login = document.getElementById('novo-login').value;
+    const email = document.getElementById('novo-email').value;
+    const senha = document.getElementById('nova-senha').value;
+    if(!nome || !login || !senha) { alert("Preencha nome, login e senha."); return; }
+    getDB().collection("equipe").add({ nome, login, email, senha }).then(() => {
+        alert("Usuário adicionado!");
+        document.getElementById('novo-nome').value = ""; document.getElementById('novo-login').value = "";
+        document.getElementById('novo-email').value = ""; document.getElementById('nova-senha').value = "";
+    }).catch(e => alert("Erro: " + e));
+}
+
+window.excluirFuncionario = function(id) { if(confirm("Tem certeza que deseja excluir este usuário?")) { getDB().collection("equipe").doc(id).delete(); } }
+
+window.editarFuncionario = function(id) {
+    getDB().collection("equipe").doc(id).get().then(doc => {
+        if(doc.exists) {
+            const u = doc.data();
+            document.getElementById('edit-id').value = doc.id;
+            document.getElementById('edit-nome').value = u.nome;
+            document.getElementById('edit-login').value = u.login;
+            document.getElementById('edit-email').value = u.email;
+            document.getElementById('edit-senha').value = u.senha;
+            document.getElementById('box-novo-usuario').classList.add('hidden');
+            document.getElementById('div-editar-usuario').classList.remove('hidden');
+        }
+    });
+}
+
+window.salvarEdicaoUsuario = function() {
+    const id = document.getElementById('edit-id').value;
+    const nome = document.getElementById('edit-nome').value;
+    const email = document.getElementById('edit-email').value;
+    const senha = document.getElementById('edit-senha').value;
+    if(!nome || !senha) { alert("Nome e senha são obrigatórios."); return; }
+    getDB().collection("equipe").doc(id).update({ nome, email, senha }).then(() => { alert("Usuário atualizado!"); window.cancelarEdicao(); }).catch(e => alert("Erro: " + e));
+}
+
+window.cancelarEdicao = function() {
+    document.getElementById('edit-id').value = ""; document.getElementById('edit-nome').value = "";
+    document.getElementById('edit-login').value = ""; document.getElementById('edit-email').value = ""; document.getElementById('edit-senha').value = "";
+    document.getElementById('div-editar-usuario').classList.add('hidden'); document.getElementById('box-novo-usuario').classList.remove('hidden');
+}
+
+window.carregarLogs = function() {
+    const database = getDB();
+    const tbody = document.getElementById('tabela-logs');
+    if(!database || !tbody) return;
+    tbody.innerHTML = '<tr><td colspan="3">Carregando...</td></tr>';
+    
+    if (logsUnsubscribe) logsUnsubscribe();
+    
+    logsUnsubscribe = database.collection("auditoria").limit(300).orderBy("data_log", "desc").onSnapshot(snap => {
+        tbody.innerHTML = '';
+        let count = 0;
+        
+        snap.forEach(doc => {
+            const log = doc.data();
+            if (log.sistema !== "Exumacao") return; 
+            
+            count++;
+            let displayDataHora = '-';
+            if (log.data_log) {
+                const dh = new Date(log.data_log);
+                if(!isNaN(dh)) {
+                    displayDataHora = `${dh.getDate().toString().padStart(2,'0')}/${(dh.getMonth()+1).toString().padStart(2,'0')}/${dh.getFullYear()} <br> <span style="font-size:11px; color:#666;">${dh.getHours().toString().padStart(2,'0')}:${dh.getMinutes().toString().padStart(2,'0')}</span>`;
+                }
+            }
+            let color = "#333";
+            if(log.acao === "EXCLUSÃO") color = "var(--danger)";
+            if(log.acao === "EDIÇÃO" || log.acao === "LIBERAÇÃO") color = "var(--excel-red)";
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${displayDataHora}</td><td><b>${log.usuario}</b></td><td><span style="color:${color}; font-weight:bold;">[${log.acao}]</span> ${log.detalhe}</td>`;
+            tbody.appendChild(tr);
+        });
+        
+        if(count === 0) { tbody.innerHTML = '<tr><td colspan="3">Nenhum registro encontrado neste sistema.</td></tr>'; }
+    });
+}
+
+window.baixarLogsExcel = function() {
+    if(typeof XLSX === 'undefined') { alert("Erro: Biblioteca Excel ausente."); return; }
+    const db = getDB();
+    db.collection("auditoria").limit(1000).orderBy("data_log", "desc").get().then(snap => {
+        let dados = [];
+        snap.forEach(doc => {
+            const d = doc.data();
+            if(d.sistema !== "Exumacao") return; 
+            const dt = d.data_log ? new Date(d.data_log).toLocaleString() : '-';
+            dados.push({ "Data/Hora": dt, "Usuário": d.usuario, "Ação": d.acao, "Detalhes": d.detalhe });
+        });
+        const ws = XLSX.utils.json_to_sheet(dados);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Auditoria Exumacoes");
+        XLSX.writeFile(wb, "Logs_Auditoria_Exumacoes.xlsx");
+    });
+}
+
+window.baixarLogsPDF = function() {
+    if(!window.jspdf) { alert("Erro: Biblioteca PDF ausente."); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const db = getDB();
+    db.collection("auditoria").limit(1000).orderBy("data_log", "desc").get().then(snap => {
+        let body = [];
+        snap.forEach(doc => {
+            const d = doc.data();
+            if(d.sistema !== "Exumacao") return; 
+            const dt = d.data_log ? new Date(d.data_log).toLocaleString() : '-';
+            body.push([dt, d.usuario, `[${d.acao}] ${d.detalhe}`]);
+        });
+        doc.text("Relatório de Auditoria - Exumações", 14, 10);
+        doc.autoTable({ head: [['Data/Hora', 'Usuário', 'Ação/Detalhes']], body: body, startY: 20, });
+        doc.save("Logs_Auditoria_Exumacoes.pdf");
+    });
+}
+
+window.carregarEstatisticas = function(modo) {
+    const database = getDB();
+    if(!database) return;
+    
+    let dInicio = new Date();
+    let dString = "";
+
+    if (modo === 'mes') {
+        dInicio = new Date(dInicio.getFullYear(), dInicio.getMonth(), 1);
+        dString = dInicio.toISOString();
+    } else {
+        dInicio.setDate(dInicio.getDate() - parseInt(modo));
+        dString = dInicio.toISOString();
+    }
+    
+    database.collection("requerimentos_exumacao").where("data_registro", ">=", dString).onSnapshot(snap => {
+        let servicos = {};
+        snap.forEach(doc => {
+            const d = doc.data();
+            if(d.servico_requerido) { 
+                const k = d.servico_requerido.trim().toUpperCase(); 
+                servicos[k] = (servicos[k] || 0) + 1; 
+            }
+        });
+        
+        const sorted = Object.entries(servicos).sort((a,b) => b[1] - a[1]).slice(0, 10);
+        const labels = sorted.map(x => x[0]);
+        const data = sorted.map(x => x[1]);
+
+        const ctx = document.getElementById('grafico-servicos');
+        if(ctx && window.Chart) {
+            if(chartInstances['servicos']) chartInstances['servicos'].destroy();
+            chartInstances['servicos'] = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: labels, datasets: [{ label: 'Qtd. de Serviços', data: data, backgroundColor: '#3699ff' }] },
+                options: { indexAxis: 'y', maintainAspectRatio: false, scales: { x: { beginAtZero: true } } }
+            });
+        }
+        dadosEstatisticasExportacao = sorted.map(([c,q]) => ({"Serviço": c, "Quantidade": q}));
+    });
+}
+
+window.baixarRelatorioCompleto = function() {
+    if(!getDB()) return; if(!confirm("Baixar relatório de todos os requerimentos?")) return;
+    if(typeof XLSX === 'undefined') { alert("Biblioteca Excel não carregada."); return; }
+    getDB().collection("requerimentos_exumacao").get().then(snap => {
+        let dados = [];
+        snap.forEach(doc => {
+            let d = doc.data();
+            let dtReg = d.data_registro ? new Date(d.data_registro).toLocaleDateString() : '-';
+            dados.push([d.protocolo, dtReg, d.resp_nome, d.nome_falecido, d.cemiterio, d.servico_requerido, d.processo, d.grm, d.atendente_sistema]);
+        });
+        const ws = XLSX.utils.aoa_to_sheet([["Protocolo","Data","Requerente","Falecido","Cemitério","Serviço","Processo","GRM","Atendente"], ...dados]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Requerimentos");
+        XLSX.writeFile(wb, "Relatorio_Requerimentos.xlsx");
+    });
+}
+
+window.baixarExcel = function() {
+    if(typeof XLSX === 'undefined' || dadosEstatisticasExportacao.length === 0) { alert("Sem dados para exportar ou biblioteca falhou."); return; }
+    const ws = XLSX.utils.json_to_sheet(dadosEstatisticasExportacao);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Stats_Servicos");
+    XLSX.writeFile(wb, "Estatisticas_Exumacao.xlsx");
+}
+
+// --- TABELA E BUSCA PRINCIPAL COM FILTRO DE DATA ---
 window.carregarTabela = function() {
     const database = getDB(); if(!database) return;
     if (unsubscribe) unsubscribe();
     
-    unsubscribe = database.collection("requerimentos_exumacao").orderBy("data_registro", "desc").limit(50).onSnapshot((snap) => {
+    const fd = document.getElementById('filtro-data');
+    const dataFiltro = fd ? fd.value : "";
+    
+    let query = database.collection("requerimentos_exumacao").orderBy("data_registro", "desc");
+    
+    if (dataFiltro) {
+        query = query.where("data_registro", ">=", dataFiltro)
+                     .where("data_registro", "<=", dataFiltro + "T23:59:59.999Z");
+    } else {
+        query = query.limit(50);
+    }
+    
+    unsubscribe = query.onSnapshot((snap) => {
         let lista = [];
         snap.forEach(doc => { let d = doc.data(); d.id = doc.id; lista.push(d); });
         renderizarTabela(lista);
@@ -197,7 +455,17 @@ window.carregarTabela = function() {
 
 window.realizarBusca = function() {
     const termo = document.getElementById('input-busca').value.trim();
-    if (!termo) { carregarTabela(); return; }
+    const fd = document.getElementById('filtro-data');
+    
+    if (!termo) { 
+        if (fd && !fd.value) fd.value = pegarDataISO();
+        carregarTabela(); 
+        return; 
+    }
+    
+    // Limpa a data para buscar globalmente
+    if (fd) fd.value = "";
+
     const database = getDB();
     if (unsubscribe) unsubscribe();
     
@@ -280,7 +548,7 @@ window.editar = function(id) {
     });
 }
 
-// SALVAR REQUERIMENTO
+// SALVAR REQUERIMENTO (COM AUDITORIA ISOLADA)
 const form = document.getElementById('form-atendimento');
 if(form) {
     form.onsubmit = (e) => {
@@ -298,8 +566,10 @@ if(form) {
         }
 
         if(id) {
+            database.collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado ? usuarioLogado.nome : 'Anon', acao: "EDIÇÃO", detalhe: `Req ID: ${id} | Falecido: ${dados.nome_falecido}`, sistema: "Exumacao" });
             database.collection("requerimentos_exumacao").doc(id).update(dados).then(() => window.fecharModal());
         } else {
+            database.collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado ? usuarioLogado.nome : 'Anon', acao: "CRIAÇÃO", detalhe: `Protocolo: ${dados.protocolo} | Falecido: ${dados.nome_falecido}`, sistema: "Exumacao" });
             database.collection("requerimentos_exumacao").add(dados).then(() => window.fecharModal());
         }
     }
@@ -324,7 +594,7 @@ window.abrirLiberacao = function(id) {
 
 window.fecharModalLiberacao = function() { safeDisplay('modal-liberacao', 'none'); }
 
-// SALVAR APENAS OS DADOS DE LIBERAÇÃO
+// SALVAR APENAS OS DADOS DE LIBERAÇÃO (COM AUDITORIA ISOLADA)
 const formLib = document.getElementById('form-liberacao');
 if(formLib) {
     formLib.onsubmit = (e) => {
@@ -340,6 +610,7 @@ if(formLib) {
         };
 
         if(id) {
+            database.collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado ? usuarioLogado.nome : 'Anon', acao: "LIBERAÇÃO", detalhe: `Req ID: ${id} | GRM: ${dadosLiberacao.grm}`, sistema: "Exumacao" });
             database.collection("requerimentos_exumacao").doc(id).update(dadosLiberacao).then(() => window.fecharModalLiberacao());
         }
     }
@@ -348,9 +619,34 @@ if(formLib) {
 // --- AÇÕES GERAIS ---
 window.excluir = function(id) {
     if(confirm('Tem certeza que deseja excluir este requerimento?')) {
+        getDB().collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado ? usuarioLogado.nome : 'Anon', acao: "EXCLUSÃO", detalhe: `Req ID excluido: ${id}`, sistema: "Exumacao" });
         getDB().collection("requerimentos_exumacao").doc(id).delete();
     }
 }
+
+// Fechar modais ao clicar fora
+window.onclick = function(event) { 
+    if (event.target == document.getElementById('modal-visualizar')) window.fecharModalVisualizar(); 
+    if (event.target == document.getElementById('modal-admin')) window.fecharModalAdmin(); 
+}
+
+// Inicializa Eventos do DOM
+document.addEventListener('DOMContentLoaded', () => {
+    const fd = document.getElementById('filtro-data');
+    if (fd) {
+        fd.addEventListener('change', () => window.carregarTabela());
+    }
+
+    const sessao = sessionStorage.getItem('usuarioLogado');
+    if (sessao) { 
+        usuarioLogado = JSON.parse(sessao); 
+        safeDisplay('tela-bloqueio', 'none'); 
+        document.getElementById('user-display').innerText = usuarioLogado.nome;
+        
+        if(fd && !fd.value) fd.value = pegarDataISO();
+        carregarTabela(); 
+    }
+});
 
 // --- VISUALIZAÇÃO E PREENCHIMENTO DO RESUMO ---
 window.visualizarDocumentos = function(id) {
@@ -388,7 +684,7 @@ window.visualizarDocumentos = function(id) {
     });
 }
 
-// --- IMPRESSÃO DO REQUERIMENTO (COM MARCA D'ÁGUA FORÇADA) ---
+// --- IMPRESSÃO DO REQUERIMENTO ---
 window.imprimirRequerimento = function() {
     if (!dadosAtendimentoAtual) return;
     const d = dadosAtendimentoAtual;
@@ -448,7 +744,7 @@ window.imprimirRequerimento = function() {
         <div class="header">
             <div class="box-protocolo">PROTOCOLO: ${d.protocolo || 'N/A'}</div>
             <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" class="logo-print">
-            <div class="header-subtitle">Subsecretaria de Infraestrutura - SSINF</div>
+            <div class="header-subtitle">Subsecretaria de Infraestrutura - SSINF<br>Coordenação dos Cemitérios de Niterói</div>
         </div>
         
         <div class="doc-title">Requerimento de Serviços Cemiteriais</div>
@@ -522,12 +818,12 @@ window.imprimirRequerimento = function() {
         <div class="legal">
             Art. 299 do Código Penal - Falsidade ideológica: Omitir, em documento público ou particular, declaração que dele devia constar, ou nele inserir ou fazer inserir declaração falsa ou diversa da que devia ser escrita, com o fim de prejudicar direito, criar obrigação ou alterar a verdade sobre fatos juridicamente relevante, é crime.
         </div>
-    </body><script>window.onload=function(){setTimeout(function(){window.print()},500)}</script></html>`;
+    </body><script>window.onload=function(){setTimeout(function(){window.print()},800)}</script></html>`;
     
     const w = window.open('','_blank'); w.document.write(html); w.document.close();
 }
 
-// --- IMPRESSÃO DA LIBERAÇÃO (COM MARCA D'ÁGUA FORÇADA) ---
+// --- IMPRESSÃO DA LIBERAÇÃO ---
 window.imprimirLiberacao = function() {
     if (!dadosAtendimentoAtual) return;
     const d = dadosAtendimentoAtual;
@@ -580,7 +876,7 @@ window.imprimirLiberacao = function() {
         <div class="header">
             <div class="box-protocolo">PROTOCOLO: ${d.protocolo || 'N/A'}</div>
             <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" class="logo-print">
-            <div class="header-subtitle">Secretaria de Mobilidade e Infraestrutura - SEMOBI<br>Subsecretaria de Infraestrutura - SSINF<br>Coordenadoria Municipal de Serviços Funerários</div>
+            <div class="header-subtitle">Secretaria de Mobilidade e Infraestrutura - SEMOBI<br>Subsecretaria de Infraestrutura - SSINF<br>Coordenação dos Cemitérios de Niterói</div>
         </div>
         
         <div class="doc-title">Liberação de Exumação</div>
@@ -631,7 +927,7 @@ window.imprimirLiberacao = function() {
                 ${blocoAssinaturaAtendente}
                 <div style="border-top: 1px solid #000; padding-top: 5px; min-width: 250px;">
                     <b>${(d.atendente_sistema || 'ATENDENTE').toUpperCase()}</b><br>
-                    <span style="font-size: 11px; color: #555;">Coordenadoria Municipal de Serviços Funerários</span>
+                    <span style="font-size: 11px; color: #555;">Coordenação dos Cemitérios de Niterói</span>
                 </div>
             </div>
             <div>
@@ -647,18 +943,7 @@ window.imprimirLiberacao = function() {
             Rua General Castrioto, 407 - Barreto - Niterói - 24110-256 - Tel.: 3513-6157
         </div>
 
-    </body><script>window.onload=function(){setTimeout(function(){window.print()},500)}</script></html>`;
+    </body><script>window.onload=function(){setTimeout(function(){window.print()},800)}</script></html>`;
     
     const w = window.open('','_blank'); w.document.write(html); w.document.close();
 }
-
-// INICIALIZAÇÃO
-document.addEventListener('DOMContentLoaded', () => {
-    const sessao = sessionStorage.getItem('usuarioLogado');
-    if (sessao) { 
-        usuarioLogado = JSON.parse(sessao); 
-        safeDisplay('tela-bloqueio', 'none'); 
-        document.getElementById('user-display').innerText = usuarioLogado.nome;
-        carregarTabela(); 
-    }
-});

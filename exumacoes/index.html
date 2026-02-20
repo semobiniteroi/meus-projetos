@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Controle de Exumações - Niterói</title>
+    <title>Coordenação dos Cemitérios de Niterói</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -20,6 +20,24 @@
         canvas#signature-pad { border: 2px dashed #ccc; background-color: #fff; touch-action: none; border-radius: 5px; cursor: crosshair; width: 100%; }
         .btn-sign-fam { background-color: #663399; }
         .btn-sign-func { background-color: #8e44ad; }
+
+        /* CSS DO PAINEL ADMIN */
+        .btn-admin { background-color: #34495e; }
+        .tab-header { display: flex; border-bottom: 1px solid #ddd; background-color: #f8f9fa; }
+        .tab-btn { padding: 15px 25px; border: none; background: none; cursor: pointer; font-weight: 600; color: #666; border-bottom: 3px solid transparent; }
+        .tab-btn.active { color: var(--primary-color); border-bottom: 3px solid var(--primary-color); background-color: white; }
+        .tab-pane { display: none; padding: 20px; }
+        .tab-pane.active { display: block; }
+        .lista-simples { list-style: none; padding: 0; margin: 0; }
+        .lista-simples li { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;}
+        .table-logs { width: 100%; font-size: 12px; border-collapse: collapse; }
+        .table-logs th, .table-logs td { border-bottom: 1px solid #eee; padding: 8px 10px; text-align: left; }
+        .btn-imprimir { background-color: white; color: var(--text-dark); border: 1px solid #ebedf3; border-radius: 6px; padding: 8px 15px; font-weight: 600; cursor: pointer; }
+
+        /* CSS DO CALENDÁRIO TOPO */
+        .topo-content { display: flex; flex-direction: column; justify-content: center; }
+        .topo-content label { font-size: 8px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; margin: 0; line-height: 1; }
+        .topo-content input { border: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text-dark); padding: 0; outline: none; cursor: pointer; height: 16px; }
 
         @media (max-width: 768px) { .modal-footer-custom { padding-bottom: 20px; } .modal-footer-custom button { max-width: 48%; } }
     </style>
@@ -42,16 +60,24 @@
         <div class="logo-area">
             <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Prefeitura de Niterói" id="logo-principal">
             <div class="titulo-area">
-                <h3 style="margin-left: 10px; border-left: 2px solid #999; padding-left: 15px;">Serviços Funerários<br><span style="color:#3699ff; font-weight:800;">EXUMAÇÕES</span></h3>
+                <h3 style="margin-left: 10px; border-left: 2px solid #999; padding-left: 15px;">Coordenação dos Cemitérios<br><span style="color:#3699ff; font-weight:800;">DE NITERÓI</span></h3>
             </div>
         </div>
         
         <div class="info-area">
             <div class="controles-topo">
+                <div class="topo-box">
+                    <span class="topo-icon" style="margin-right: 5px;">📅</span>
+                    <div class="topo-content">
+                        <label>Data</label>
+                        <input type="date" id="filtro-data">
+                    </div>
+                </div>
                 <div class="topo-box search-box"><input type="text" id="input-busca" placeholder="Buscar Nome ou Protocolo..."><button onclick="realizarBusca()" class="btn-search" title="Pesquisar">🔍</button></div>
             </div>
             <div class="user-controls">
                 <span id="user-display"></span>
+                <button onclick="abrirAdmin()" class="btn-header btn-admin" title="Painel Administrativo">⚙️ Admin</button>
                 <button onclick="fazerLogout()" class="btn-header btn-exit" title="Sair">🚪 Sair</button>
             </div>
         </div>
@@ -59,7 +85,6 @@
 
     <div class="main-content">
         <div class="controles">
-            <button onclick="abrirModalGRM()" class="btn-novo" style="background-color: #27ae60; margin-right: 10px;">💸 Emitir GRM</button>
             <button onclick="abrirModal()" class="btn-novo">+ Novo Requerimento</button>
         </div>
 
@@ -194,12 +219,13 @@
             <div id="resumo-dados" style="padding: 20px 30px; background-color: #f8f9fb; border-bottom: 1px solid #ebedf3; font-size: 13px; line-height: 1.6;"></div>
 
             <div style="padding: 20px; text-align: center;">
-                <p style="margin-bottom: 20px; color: #555; font-size: 12px;">Confira os dados acima. Selecione qual documento deseja gerar ou colete a assinatura digital.</p>
+                <p style="margin-bottom: 20px; color: #555; font-size: 12px;">Confira os dados acima. Selecione qual ação deseja realizar para este requerimento.</p>
                 <div class="modal-footer-custom" style="border:none; justify-content: center;">
                     <button type="button" class="btn-modal btn-sign-fam" onclick="abrirModalAssinatura('responsavel')">✍️ Assinar Requerente</button>
                     <button type="button" class="btn-modal btn-sign-func" onclick="abrirModalAssinatura('atendente')">✍️ Assinar Equipe</button>
                     <button type="button" class="btn-modal btn-print-req" onclick="imprimirRequerimento()">📄 Imprimir Requerimento</button>
                     <button type="button" class="btn-modal btn-print-lib" onclick="imprimirLiberacao()">📄 Imprimir Liberação</button>
+                    <button type="button" class="btn-modal" style="background-color: #27ae60; color: white;" onclick="abrirModalGRM()">💸 Emitir GRM</button>
                 </div>
             </div>
         </div>
@@ -235,8 +261,92 @@
         </div>
     </div>
 
+    <div id="modal-admin" class="modal">
+        <div class="modal-content" style="max-width: 900px; height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header"><h3>Painel Administrativo</h3><span class="close" onclick="fecharModalAdmin()">×</span></div>
+            <div class="tab-header">
+                <button class="tab-btn active" onclick="abrirAba('tab-equipe')">👥 Equipe</button>
+                <button class="tab-btn" onclick="abrirAba('tab-stats')">📊 Estatísticas (Serviços)</button>
+                <button class="tab-btn" onclick="abrirAba('tab-logs')">🕵️ Auditoria</button>
+            </div>
+            <div class="tab-content-area" style="flex-grow: 1; overflow-y: auto; padding: 20px;">
+                
+                <div id="tab-equipe" class="tab-pane active">
+                    <h4>Gerenciar Usuários</h4>
+                    <div id="box-novo-usuario" style="display:flex; flex-direction: column; gap:10px; margin-bottom:20px; background: #f9f9f9; padding:15px; border-radius:8px;">
+                        <strong style="color:var(--primary-color);">Novo Usuário:</strong>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px;">
+                            <input type="text" id="novo-nome" placeholder="Nome Completo" style="border: 1px solid #ccc; padding: 8px;">
+                            <input type="text" id="novo-login" placeholder="Login" style="border: 1px solid #ccc; padding: 8px;">
+                            <input type="email" id="novo-email" placeholder="E-mail" style="border: 1px solid #ccc; padding: 8px;">
+                            <input type="password" id="nova-senha" placeholder="Senha" style="border: 1px solid #ccc; padding: 8px;">
+                            <button onclick="adicionarFuncionario()" class="btn-novo" style="padding: 10px 20px;">+</button>
+                        </div>
+                    </div>
+                    <div id="div-editar-usuario" class="hidden" style="display:flex; flex-direction: column; gap:10px; margin-bottom:20px; background: #fff3cd; padding:15px; border-radius:8px; border:1px solid #ffeeba;">
+                        <strong style="color:#856404;">✏️ Editando Usuário:</strong>
+                        <input type="hidden" id="edit-id">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px;">
+                            <input type="text" id="edit-nome" placeholder="Nome e Sobrenome" style="border: 1px solid #ccc; padding: 8px;">
+                            <input type="text" id="edit-login" placeholder="Login" disabled style="background:#e9ecef; cursor:not-allowed; border: 1px solid #ccc; padding: 8px;">
+                            <input type="email" id="edit-email" placeholder="E-mail" style="border: 1px solid #ccc; padding: 8px;">
+                            <input type="text" id="edit-senha" placeholder="Nova Senha" style="border: 1px solid #ccc; padding: 8px;">
+                        </div>
+                        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:5px;">
+                            <button onclick="cancelarEdicao()" class="btn-modal btn-cancelar">Cancelar</button>
+                            <button onclick="salvarEdicaoUsuario()" class="btn-modal btn-salvar">Salvar Alterações</button>
+                        </div>
+                    </div>
+                    <ul id="lista-equipe" class="lista-simples"></ul>
+                </div>
+
+                <div id="tab-stats" class="tab-pane">
+                    <div class="controles-topo" style="margin-bottom: 20px; justify-content: center; gap: 10px; flex-wrap: wrap; align-items: center; display:flex;">
+                        <button onclick="carregarEstatisticas('7')" class="btn-imprimir">7 Dias</button>
+                        <button onclick="carregarEstatisticas('30')" class="btn-imprimir">30 Dias</button>
+                        <button onclick="carregarEstatisticas('mes')" class="btn-imprimir">Este Mês</button>
+                        <div style="width: 1px; height: 25px; background: #ccc; margin: 0 10px;"></div>
+                        <button onclick="baixarRelatorioCompleto()" class="btn-novo" style="background-color: #1e3a8a;">📊 Baixar Base Completa</button>
+                        <button onclick="baixarExcel()" class="btn-novo" style="background-color: #27ae60;">📥 Excel (Visual)</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 30px;">
+                        <div class="grafico-container" style="height: 350px;">
+                            <h5 style="text-align:center; margin-bottom:10px;">Serviços Mais Realizados</h5>
+                            <canvas id="grafico-servicos"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-logs" class="tab-pane">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 15px;">
+                        <h4>Log de Auditoria e Alterações</h4>
+                        <div style="display:flex; gap: 10px;">
+                            <button onclick="baixarLogsExcel()" class="btn-novo" style="background-color:#27ae60; padding: 5px 10px; font-size:12px;">📥 Excel</button>
+                            <button onclick="baixarLogsPDF()" class="btn-novo" style="background-color:#c0392b; padding: 5px 10px; font-size:12px;">📄 PDF</button>
+                            <button onclick="carregarLogs()" class="btn-imprimir" style="padding: 5px 10px; font-size:12px;">🔄 Atualizar</button>
+                        </div>
+                    </div>
+                    <table class="table-logs">
+                        <thead>
+                            <tr style="background:#eee;">
+                                <th>Data/Hora</th>
+                                <th>Usuário</th>
+                                <th>Ação / Detalhes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-logs"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
