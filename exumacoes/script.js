@@ -58,7 +58,24 @@ window.gerarProtocolo = function() {
     return `${ano}${mes}${dia}-${String(agora.getHours()).padStart(2,'0')}${String(agora.getMinutes()).padStart(2,'0')}`;
 }
 
-// --- LÓGICA DA EMISSÃO DE GRM (RETORNO AO IFRAME SEGURO DA PREFEITURA) ---
+// MASCARA CPF E CNPJ AUTOMÁTICA
+window.aplicarMascaraCpfCnpj = function(el) {
+    let v = el.value.replace(/\D/g, ""); 
+    if (v.length <= 11) {
+        v = v.replace(/(\d{3})(\d)/, "$1.$2");
+        v = v.replace(/(\d{3})(\d)/, "$1.$2");
+        v = v.replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+    } else {
+        v = v.substring(0, 14); 
+        v = v.replace(/^(\d{2})(\d)/, "$1.$2");
+        v = v.replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3");
+        v = v.replace(/\.(\d{3})(\d)/, ".$1/$2");
+        v = v.replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+    }
+    el.value = v;
+}
+
+// --- LÓGICA DA EMISSÃO DE GRM (IFRAME ORIGINAL) ---
 window.abrirModalGRM = function() { 
     safeDisplay('modal-grm', 'block'); 
 }
@@ -92,7 +109,7 @@ function setupSignaturePad() {
     function endDraw(e) { if(e.type === 'touchend') e.preventDefault(); isDrawing = false; }
 
     canvas.removeEventListener('mousedown', startDraw); canvas.removeEventListener('mousemove', draw); canvas.removeEventListener('mouseup', endDraw); canvas.removeEventListener('mouseout', endDraw); canvas.removeEventListener('touchstart', startDraw); canvas.removeEventListener('touchmove', draw); canvas.removeEventListener('touchend', endDraw);
-    canvas.addEventListener('mousedown', startDraw); canvas.addEventListener('mousemove', draw); canvas.addEventListener('mouseup', endDraw); canvas.addEventListener('mouseout', endDraw); canvas.addEventListener('touchstart', startDraw, { passive: false }); canvas.addEventListener('touchmove', draw, { passive: false }); canvas.addEventListener('touch সম্মেলন', endDraw, { passive: false });
+    canvas.addEventListener('mousedown', startDraw); canvas.addEventListener('mousemove', draw); canvas.addEventListener('mouseup', endDraw); canvas.addEventListener('mouseout', endDraw); canvas.addEventListener('touchstart', startDraw, { passive: false }); canvas.addEventListener('touchmove', draw, { passive: false }); canvas.addEventListener('touchend', endDraw, { passive: false });
 }
 
 window.abrirModalAssinatura = function(tipo) {
@@ -169,6 +186,51 @@ window.buscarCep = function() {
         .catch(() => {
             console.error("Erro na busca do CEP");
             campoEnd.placeholder = placeholderOriginal;
+        });
+}
+
+// --- BUSCAR REQUERENTE POR CPF ---
+window.buscarRequerentePorCPF = function() {
+    let cpfInput = document.getElementById('cpf');
+    if (!cpfInput) return;
+    let cpf = cpfInput.value.trim();
+    if (cpf.length < 14) return;
+
+    const campoNome = document.getElementById('resp_nome');
+    const placeholderOriginal = campoNome.placeholder;
+    campoNome.placeholder = "Buscando...";
+
+    const db = getDB();
+    db.collection("requerimentos_exumacao")
+        .where("cpf", "==", cpf)
+        .get()
+        .then(snap => {
+            if (!snap.empty) {
+                let docs = snap.docs.map(doc => doc.data());
+                docs.sort((a, b) => {
+                    let dataA = a.data_registro ? new Date(a.data_registro) : new Date(0);
+                    let dataB = b.data_registro ? new Date(b.data_registro) : new Date(0);
+                    return dataB - dataA;
+                });
+                
+                let d = docs[0];
+
+                if (d.resp_nome) document.getElementById('resp_nome').value = d.resp_nome;
+                if (d.telefone) document.getElementById('telefone').value = d.telefone;
+                if (d.rg) document.getElementById('rg').value = d.rg;
+                if (d.endereco) document.getElementById('endereco').value = d.endereco;
+                if (d.bairro) document.getElementById('bairro').value = d.bairro;
+                if (d.municipio) document.getElementById('municipio').value = d.municipio;
+                if (d.cep) document.getElementById('cep').value = d.cep;
+                if (d.numero) document.getElementById('numero').value = d.numero;
+                if (d.complemento) document.getElementById('complemento').value = d.complemento;
+                if (d.parentesco) document.getElementById('parentesco').value = d.parentesco;
+            }
+            campoNome.placeholder = placeholderOriginal;
+        })
+        .catch(err => {
+            console.error("Erro na busca por CPF", err);
+            campoNome.placeholder = placeholderOriginal;
         });
 }
 
@@ -429,7 +491,7 @@ window.baixarExcel = function() {
     XLSX.writeFile(wb, "Estatisticas_Exumacao.xlsx");
 }
 
-// --- TABELA E BUSCA PRINCIPAL COM FILTRO DE DATA ---
+// --- TABELA E BUSCA PRINCIPAL MULTI-CAMPOS ---
 window.carregarTabela = function() {
     const database = getDB(); if(!database) return;
     if (unsubscribe) unsubscribe();
@@ -454,7 +516,7 @@ window.carregarTabela = function() {
 }
 
 window.realizarBusca = function() {
-    const termo = document.getElementById('input-busca').value.trim();
+    const termo = document.getElementById('input-busca').value.trim().toLowerCase();
     const fd = document.getElementById('filtro-data');
     
     if (!termo) { 
@@ -463,39 +525,43 @@ window.realizarBusca = function() {
         return; 
     }
     
-    // Limpa a data para buscar globalmente
+    // Limpa a data para buscar globalmente no banco
     if (fd) fd.value = "";
 
     const database = getDB();
     if (unsubscribe) unsubscribe();
     
-    if (/^\d/.test(termo)) {
-        unsubscribe = database.collection("requerimentos_exumacao")
-            .orderBy("protocolo")
-            .startAt(termo)
-            .endAt(termo + "\uf8ff")
-            .onSnapshot((snap) => {
-                let lista = [];
-                snap.forEach(doc => { let d = doc.data(); d.id = doc.id; lista.push(d); });
-                renderizarTabela(lista);
+    // Remove pontuações para não dar falha em buscas de CPF ou Telefones formatados
+    const termoSemPontuacao = termo.replace(/[\.\-\/\(\)\s]/g, '');
+
+    // Busca amplo limite localmente para permitir filtro flexivel (OR em múltiplos campos)
+    unsubscribe = database.collection("requerimentos_exumacao")
+        .orderBy("data_registro", "desc")
+        .limit(1000)
+        .onSnapshot((snap) => {
+            let lista = [];
+            snap.forEach(doc => { 
+                let d = doc.data(); 
+                d.id = doc.id; 
+                
+                // Concatena todos os campos possíveis em uma string única
+                let stringBusca = `${d.protocolo || ''} ${d.resp_nome || ''} ${d.nome_falecido || ''} ${d.cpf || ''} ${d.rg || ''} ${d.telefone || ''} ${d.processo || ''} ${d.cemiterio || ''}`.toLowerCase();
+                
+                let stringSemPontuacao = stringBusca.replace(/[\.\-\/\(\)\s]/g, '');
+
+                // Compara termo com pontuação ou sem pontuação
+                if (stringBusca.includes(termo) || (termoSemPontuacao !== '' && stringSemPontuacao.includes(termoSemPontuacao))) {
+                    lista.push(d); 
+                }
             });
-    } else {
-        unsubscribe = database.collection("requerimentos_exumacao")
-            .orderBy("nome_falecido")
-            .startAt(termo)
-            .endAt(termo + "\uf8ff")
-            .onSnapshot((snap) => {
-                let lista = [];
-                snap.forEach(doc => { let d = doc.data(); d.id = doc.id; lista.push(d); });
-                renderizarTabela(lista);
-            });
-    }
+            renderizarTabela(lista);
+        });
 }
 
 function renderizarTabela(lista) {
     const tbody = document.getElementById('tabela-corpo'); if(!tbody) return;
     tbody.innerHTML = ''; 
-    if (lista.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="padding:40px; text-align:center;">Nenhum registro.</td></tr>'; return; }
+    if (lista.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="padding:40px; text-align:center;">Nenhum registro encontrado.</td></tr>'; return; }
 
     lista.forEach(item => {
         const tr = document.createElement('tr');
@@ -943,6 +1009,204 @@ window.imprimirLiberacao = function() {
             Rua General Castrioto, 407 - Barreto - Niterói - 24110-256 - Tel.: 3513-6157
         </div>
 
+    </body><script>window.onload=function(){setTimeout(function(){window.print()},800)}</script></html>`;
+    
+    const w = window.open('','_blank'); w.document.write(html); w.document.close();
+}
+
+// --- IMPRESSÃO DAS DECLARAÇÕES (NOVOS MOLDES E ALINHAMENTO CORRIGIDO) ---
+window.imprimirDeclaracao = function() {
+    if (!dadosAtendimentoAtual) {
+        alert("Nenhum atendimento selecionado.");
+        return;
+    }
+    
+    const d = dadosAtendimentoAtual;
+    const tipoVal = document.getElementById('select_declaracao').value;
+
+    const dataReq = d.data_registro ? new Date(d.data_registro) : new Date();
+    const mesExtenso = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+    const dataTexto = `${dataReq.getDate()} de ${mesExtenso[dataReq.getMonth()]} de ${dataReq.getFullYear()}`;
+
+    // ASSINATURA CENTRALIZADA
+    let blocoAssinaturaRequerente = assinaturaResponsavelImg ? `<div style="text-align:center;"><img src="${assinaturaResponsavelImg}" style="max-height:60px; margin-bottom: 5px;"></div>` : `<div style="height:60px;"></div>`;
+
+    let enderecoCompleto = d.endereco ? d.endereco.toUpperCase() : '___________';
+    if (d.numero) enderecoCompleto += `, Nº ${d.numero}`;
+
+    // Variáveis auxiliares para as declarações
+    const cpf = d.cpf || "___________";
+    const rg = d.rg || "___________";
+    const aut = d.autorizado || "O PRÓPRIO REQUERENTE";
+    const falecido = d.nome_falecido ? d.nome_falecido.toUpperCase() : "___________";
+    const proc = d.processo || "___________";
+    
+    const sepOrigem = d.sepul || "_____";
+    const qdOrigem = d.qd || "_____";
+    const tipoOrigem = d.tipo_sepultura ? d.tipo_sepultura.toUpperCase() : "___________";
+    const cemOrigem = d.cemiterio ? d.cemiterio.toUpperCase() : "___________";
+    
+    const cemDestino = d.cemiterio_destino ? d.cemiterio_destino.toUpperCase() : "___________";
+    const destNro = d.destino_local_nro || "_____";
+    const destLivro = d.destino_livro || "_____";
+    const destFls = d.destino_fls || "_____";
+    const destProp = d.destino_proprietario ? d.destino_proprietario.toUpperCase() : "___________";
+    
+    const lacre = d.lacre || "___________";
+    const servicoReforma = d.servico_reforma || "___________";
+
+    let titulo_declaracao = "";
+    let texto_dinamico = "";
+
+    switch(tipoVal) {
+        case "saida_nicho_perpetuo":
+            titulo_declaracao = "Saída de ossos do nicho perpétuo";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a retirar os restos mortais do(a) falecido(a) <b>${falecido}</b> no nicho perpétuo nº <b>${sepOrigem}</b> registrado no livro nº <b>${destLivro}</b> as fls. <b>${destFls}</b> em nome de <b>${d.proprietario ? d.proprietario.toUpperCase() : '___________'}</b> que se encontra no Cemitério <b>${cemOrigem}</b> para o Cemitério <b>${cemDestino}</b>.`;
+            break;
+        case "exumacao_saida":
+            titulo_declaracao = "Exumação e saída dos restos mortais";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a exumar os restos mortais do(a) falecido(a) <b>${falecido}</b> na sepultura (tipo) <b>${tipoOrigem}</b> nº <b>${sepOrigem}</b> qd <b>${qdOrigem}</b> que se encontra no Cemitério <b>${cemOrigem}</b> e saída dos ossos para o Cemitério <b>${cemDestino}</b>.`;
+            break;
+        case "exumacao_recolhimento_nicho_perp":
+            titulo_declaracao = "Exumação e recolhimento da ossada ao nicho perpétuo";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a exumar os restos mortais do(a) falecido(a) <b>${falecido}</b> na sepultura (tipo) <b>${tipoOrigem}</b> nº <b>${sepOrigem}</b> quadra <b>${qdOrigem}</b> que se encontra no Cemitério <b>${cemOrigem}</b> e recolher a ossada ao nicho perpétuo nº <b>${destNro}</b> registrado no livro nº <b>${destLivro}</b> as fls. <b>${destFls}</b> em nome de <b>${destProp}</b> no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "exumacao_recolhimento_nicho_adq":
+            titulo_declaracao = "Exumação e recolhimento da ossada ao nicho a ser adquirido";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a exumar os restos mortais do(a) falecido(a) <b>${falecido}</b> na sepultura (tipo) <b>${tipoOrigem}</b> nº <b>${sepOrigem}</b> quadra <b>${qdOrigem}</b> que se encontra no Cemitério <b>${cemOrigem}</b> e recolher a ossada ao nicho a ser adquirido através do processo n° <b>${proc}</b> no Cemitério <b>${cemDestino}</b>.`;
+            break;
+        case "exumacao_recolhimento_sep_perp":
+            titulo_declaracao = "Exumação e recolhimento da ossada a sepultura perpétua";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a exumar os restos mortais do(a) falecido(a) <b>${falecido}</b> que se encontra inumado na sepultura (tipo) <b>${tipoOrigem}</b> nº <b>${sepOrigem}</b> qd <b>${qdOrigem}</b> no Cemitério <b>${cemOrigem}</b> e recolher a ossada a sepultura perpétua nº <b>${destNro}</b> livro nº <b>${destLivro}</b> fls. nº <b>${destFls}</b> em nome de <b>${destProp}</b> no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "entrada_recolhimento_nicho_perp":
+            titulo_declaracao = "Entrada de restos mortais e recolhimento da ossada ao nicho perpétuo";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a transladar os restos mortais do(a) falecido(a) <b>${falecido}</b> vindos do Cemitério <b>${cemOrigem}</b> e recolher a ossada ao nicho perpétuo nº <b>${destNro}</b> livro nº <b>${destLivro}</b> fls nº <b>${destFls}</b> no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "entrada_recolhimento_sep_perp":
+            titulo_declaracao = "Entrada de restos mortais e recolhimento da ossada a sepultura perpétua";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a transladar os restos mortais do(a) falecido(a) <b>${falecido}</b> vindos do Cemitério <b>${cemOrigem}</b> e recolher a ossada a sepultura perpétua nº <b>${destNro}</b> QD <b>${qdOrigem}</b> no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "entrada_permissao_nicho":
+            titulo_declaracao = "Entrada de restos mortais e permissão de uso de nicho";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a transladar os restos mortais do(a) falecido(a) <b>${falecido}</b> vindos do Cemitério <b>${cemOrigem}</b> e permissão de uso de nicho no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "entrada_cinzas_sep_perp":
+            titulo_declaracao = "Entrada de cinzas e recolhimento a sepultura perpétua";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a transladar as cinzas do(a) falecido(a) <b>${falecido}</b> vindos do Cemitério <b>${cemOrigem}</b> e recolher as cinzas a sepultura perpétua nº <b>${destNro}</b> livro nº <b>${destLivro}</b> fls nº <b>${destFls}</b> no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "entrada_cinzas_nicho_perp":
+            titulo_declaracao = "Entrada de cinzas e recolhimento da ossada ao nicho perpétuo";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a transladar as cinzas do (a) falecido (a) <b>${falecido}</b> vindos do Cemitério <b>${cemOrigem}</b>, e recolher as cinzas ao nicho perpétuo nº <b>${destNro}</b>, livro nº <b>${destLivro}</b>, fls nº <b>${destFls}</b>, no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "saida_sep_perp":
+            titulo_declaracao = "Saída os ossos da sepultura perpétua";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a retirar os restos mortais do(a) falecido(a) <b>${falecido}</b> na sepultura perpétua (tipo) <b>${tipoOrigem}</b>, nº <b>${sepOrigem}</b>, da quadra <b>${qdOrigem}</b>, em nome de <b>${d.proprietario ? d.proprietario.toUpperCase() : '___________'}</b> que se encontra no Cemitério <b>${cemOrigem}</b> para o Cemitério <b>${cemDestino}</b>.`;
+            break;
+        case "permuta_sepultura":
+            titulo_declaracao = "Permuta de sepultura";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a permutar a sepultura <b>${tipoOrigem}</b> n° <b>${sepOrigem}</b> registrado no livro nº <b>${destLivro}</b>, às fls nº <b>${destFls}</b>, em nome de <b>${d.proprietario ? d.proprietario.toUpperCase() : '___________'}</b> que se encontra no Cemitério <b>${cemOrigem}</b> e permutar por outra vaga no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "reparo_diversos":
+            titulo_declaracao = "Reparo diversos";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a requerer reparo diversos na sepultura perpétua <b>${tipoOrigem}</b> nº <b>${sepOrigem}</b>, registrado no livro nº <b>${destLivro}</b>, às fls nº <b>${destFls}</b>, em nome de <b>${d.proprietario ? d.proprietario.toUpperCase() : '___________'}</b> que se encontra no Cemitério <b>${cemOrigem}</b>.`;
+            break;
+        case "capacidade_nicho":
+            titulo_declaracao = "Termo de responsabilidade para capacidade do nicho e colocação de placa";
+            texto_dinamico = `tomo ciência que o nicho a ser adquirido através do processo n° <b>${proc}</b> possui capacidade somente para uma ossada.<br><br>
+            <b>Informação para quem abriu processo de colocação de placa:</b><br>
+            • Não será aceita placas de identificação que não houver as mesmas dimensões do nicho;<br>
+            • Os funcionários do Cemitério Municipal do Maruí são proibidos de fazer medição de pedra mármore / granito para nicho;<br>
+            • A medição da placa será feita pelo funcionário da marmoraria/loja contratada pela família;<br>
+            • Poderá ser aproveitada lápides oriundas de sepulturas ou de entradas de restos mortais desde que esteja dentro dos padrões mencionados acima;<br>
+            • O funcionário (pedreiro) do Cemitério colocará a placa sem custo adicional;<br>
+            • Não poderá colocar placas de azulejos, plástico ou inox; Só poderá ser placa de mármore/granito;<br>
+            • O recibo entregue após o pagamento tem validade de 90 (NOVENTA) dias.<br><br>
+            <b>Obs.:</b> Sendo assim, me responsabilizo por qualquer eventualidade.`;
+            break;
+        case "recolhimento_lacre_nicho_perp":
+            titulo_declaracao = "Recolhimento da ossada ao nicho perpétuo";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a solicitar o recolhimento dos restos mortais do(a) falecido(a) <b>${falecido}</b> exumados e identificados sob lacre de nº <b>${lacre}</b> que se encontravam na sepultura (tipo) <b>${tipoOrigem}</b>, nº <b>${sepOrigem}</b>, quadra <b>${qdOrigem}</b>, que se encontra no Cemitério <b>${cemOrigem}</b> e recolher a ossada ao nicho perpétuo nº <b>${destNro}</b>, registrado no livro nº <b>${destLivro}</b>, as fls. <b>${destFls}</b>, em nome de <b>${destProp}</b> no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "saida_lacre":
+            titulo_declaracao = "Saída da ossada sob lacre";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a solicitar o recolhimento dos restos mortais do(a) falecido(a) <b>${falecido}</b> exumados e identificados sob lacre de nº <b>${lacre}</b> que se encontravam na sepultura (tipo) <b>${tipoOrigem}</b>, nº <b>${sepOrigem}</b>, qd <b>${qdOrigem}</b>, que se encontra no Cemitério <b>${cemOrigem}</b> e saída dos ossos para o Cemitério <b>${cemDestino}</b>.`;
+            break;
+        case "permuta_nicho":
+            titulo_declaracao = "Permuta de nicho";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a transladar os restos mortais do(a) falecido(a) <b>${falecido}</b> no nicho perpétuo nº <b>${sepOrigem}</b>, registrado no livro nº <b>${destLivro}</b>, às fls nº <b>${destFls}</b>, em nome de <b>${d.proprietario ? d.proprietario.toUpperCase() : '___________'}</b> que se encontra no Cemitério <b>${cemOrigem}</b> e permutar por um nicho vago no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "permissao_uso_sepultura":
+            titulo_declaracao = "Permissão de uso de sepultura";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a solicitar a permissão de uso da sepultura (tipo) <b>${tipoOrigem}</b> n° <b>${sepOrigem}</b> quadra <b>${qdOrigem}</b> onde se encontra os restos mortais de <b>${falecido}</b> no Cemitério <b>${cemOrigem}</b>.`;
+            break;
+        case "autorizacao_placa_nicho":
+            titulo_declaracao = "Autorização para colocação de placa de identificação no nicho perpétuo";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a dispor de uma placa de identificação no nicho perpétuo nº <b>${destNro}</b>, registrado no livro nº <b>${destLivro}</b>, as fls. <b>${destFls}</b>, em nome de <b>${destProp}</b> no Cemitério do <b>${cemDestino}</b>.`;
+            break;
+        case "servico_reforma_sep_perp":
+            titulo_declaracao = "Serviço na sepultura perpétua";
+            texto_dinamico = `Autorizo o(a) Sr(a) <b>${aut}</b> a requerer serviço em <b>${servicoReforma}</b> na sepultura perpétua <b>${tipoOrigem}</b> nº <b>${sepOrigem}</b>, registrado no livro nº <b>${destLivro}</b>, às fls nº <b>${destFls}</b>, em nome de <b>${d.proprietario ? d.proprietario.toUpperCase() : '___________'}</b> que se encontra no Cemitério <b>${cemOrigem}</b>.`;
+            break;
+        case "declaracao_residencia":
+            titulo_declaracao = "De residência";
+            texto_dinamico = `Declaro para devidos fins que tenho domicílio a <b>${enderecoCompleto}</b>, bairro <b>${d.bairro ? d.bairro.toUpperCase() : '___________'}</b>, município <b>${d.municipio ? d.municipio.toUpperCase() : '___________'}</b>, CEP <b>${d.cep || '___________'}</b>.`;
+            break;
+        case "cancelamento_processo":
+            titulo_declaracao = "Termo de cancelamento";
+            texto_dinamico = `Venho por meio desta, como <b>${d.parentesco ? d.parentesco.toUpperCase() : '___________'}</b> do falecido(a) <b>${falecido}</b> sepultado na sepultura <b>${tipoOrigem}</b> n° <b>${sepOrigem}</b> no cemitério <b>${cemOrigem}</b>, solicitar o cancelamento do meu processo nº <b>${proc}</b>.<br><br>Sugiro o arquivamento.`;
+            break;
+    }
+
+    let textoIntro = `Eu, <b>${d.resp_nome ? d.resp_nome.toUpperCase() : '___________'}</b>, carteira de identidade nº <b>${rg}</b>, inscrito(a) sob o CPF nº <b>${cpf}</b>, residente à <b>${enderecoCompleto}</b>, bairro <b>${d.bairro ? d.bairro.toUpperCase() : '___________'}</b>, município <b>${d.municipio ? d.municipio.toUpperCase() : '___________'}</b>, contato telefônico <b>${d.telefone || '___________'}</b>, `;
+
+    if (tipoVal === "capacidade_nicho") {
+        textoIntro = `Eu, <b>${d.resp_nome ? d.resp_nome.toUpperCase() : '___________'}</b>, inscrito(a) sob o CPF n° <b>${cpf}</b>, `;
+    } else if (tipoVal === "declaracao_residencia") {
+        textoIntro = `Eu, <b>${d.resp_nome ? d.resp_nome.toUpperCase() : '___________'}</b>, carteira de identidade nº <b>${rg}</b>, inscrito(a) sob o CPF nº <b>${cpf}</b>.<br><br>`;
+    } else if (tipoVal === "cancelamento_processo") {
+        textoIntro = `Eu, <b>${d.resp_nome ? d.resp_nome.toUpperCase() : '___________'}</b>, portador(a) da carteira de identidade n° <b>${rg}</b>, inscrito(a) sob o CPF n° <b>${cpf}</b>.<br><br>`;
+    }
+
+    const html = `<html><head><title>${titulo_declaracao}</title><style>
+        @page { size: A4 portrait; margin: 20mm; }
+        body { font-family: Arial, sans-serif; font-size: 16px; line-height: 1.8; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .header { text-align: center; margin-bottom: 40px; }
+        .header img { height: 70px; margin-bottom: 10px; }
+        .header-title { font-weight: bold; font-size: 14px; margin-top: 5px; }
+        .doc-title { font-weight: bold; font-size: 18px; text-transform: uppercase; margin-top: 25px; text-decoration: underline; }
+        .content { text-align: justify; margin-top: 40px; }
+        .footer { margin-top: 80px; text-align: center; }
+        .legal { font-size: 10px; text-align: center; margin-top: 60px; font-weight: bold; line-height: 1.2;}
+    </style></head><body>
+        <div class="header">
+            <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo Prefeitura">
+            <div class="header-title">SECRETARIA DE MOBILIDADE E INFRAESTRUTURA - SEMOBI</div>
+            <div class="header-title">SUBSECRETARIA DE INFRAESTRUTURA - SSINFRA</div>
+            <div class="doc-title">DECLARAÇÃO</div>
+            <div style="font-weight: bold; font-size: 16px; margin-top: 10px;">${titulo_declaracao}</div>
+        </div>
+        
+        <div class="content">
+            ${textoIntro} ${texto_dinamico}
+        </div>
+
+        <div class="footer">
+            <div>Niterói, ${dataTexto}</div>
+            <div style="margin-top: 60px; display: flex; flex-direction: column; align-items: center;">
+                <div style="width: 350px; text-align: center;">
+                    ${blocoAssinaturaRequerente}
+                    <div style="border-top: 1px solid #000; padding-top: 5px; font-weight: bold;">
+                        Assinatura conforme documento apresentado
+                    </div>
+                </div>
+                <div style="margin-top: 15px; font-weight: bold; font-size: 14px;">*ANEXAR XEROX DO RG</div>
+            </div>
+        </div>
+
+        <div class="legal">
+            Art. 299 do Código Penal - Falsidade ideológica: Omitir, em documento público ou particular, declaração que dele devia constar, ou nele inserir ou fazer inserir declaração falsa ou diversa da que devia ser escrita, com o fim de prejudicar direito, criar obrigação ou alterar a verdade sobre fatos juridicamente relevante, é crime.
+        </div>
     </body><script>window.onload=function(){setTimeout(function(){window.print()},800)}</script></html>`;
     
     const w = window.open('','_blank'); w.document.write(html); w.document.close();

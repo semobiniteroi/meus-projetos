@@ -73,7 +73,7 @@
                         <input type="date" id="filtro-data">
                     </div>
                 </div>
-                <div class="topo-box search-box"><input type="text" id="input-busca" placeholder="Buscar Nome ou Protocolo..."><button onclick="realizarBusca()" class="btn-search" title="Pesquisar">🔍</button></div>
+                <div class="topo-box search-box"><input type="text" id="input-busca" placeholder="Buscar Nome, CPF, Protocolo..."><button onclick="realizarBusca()" class="btn-search" title="Pesquisar">🔍</button></div>
             </div>
             <div class="user-controls">
                 <span id="user-display"></span>
@@ -107,9 +107,9 @@
     </div>
 
     <div id="modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 800px;">
             <div class="modal-header">
-                <h3>Registro de Requerimento</h3>
+                <h3>Registro de Requerimento / Declarações</h3>
                 <span class="close" onclick="fecharModal()">×</span>
             </div>
             
@@ -125,18 +125,30 @@
                     <div class="input-group span-1"><label>Telefone</label><input type="text" id="telefone" required></div>
                     <div class="input-group span-1"><label>Grau Parentesco</label><input type="text" id="parentesco" required></div>
                     
+                    <div class="input-group span-1"><label>RG</label><input type="text" id="rg" placeholder="Identidade"></div>
+                    
+                    <div class="input-group span-1">
+                        <label style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            CPF 
+                            <span style="color:#3699ff; cursor:pointer; font-size:10px; font-weight:bold;" onclick="buscarRequerentePorCPF()" title="Preencher dados caso já cadastrado">🔍 BUSCAR</span>
+                        </label>
+                        <input type="text" id="cpf" placeholder="000.000.000-00" oninput="aplicarMascaraCpfCnpj(this)" onblur="buscarRequerentePorCPF()">
+                    </div>
+                    
                     <div class="input-group span-2"><label>Endereço</label><input type="text" id="endereco" required></div>
+                    
                     <div class="input-group span-1"><label>Bairro</label><input type="text" id="bairro" required></div>
                     <div class="input-group span-1"><label>Município</label><input type="text" id="municipio" required></div>
-                    
                     <div class="input-group span-1"><label>CEP</label><input type="text" id="cep" placeholder="00000-000" maxlength="9" onblur="buscarCep()"></div>
                     <div class="input-group span-1"><label>Número</label><input type="text" id="numero" required></div>
-                    <div class="input-group span-2"><label>Complemento</label><input type="text" id="complemento" placeholder="Ex: Apto 101, Bloco B..."></div>
                     
-                    <div class="section-title">Dados do Falecido(a)</div>
+                    <div class="input-group span-2"><label>Complemento</label><input type="text" id="complemento" placeholder="Ex: Apto 101, Bloco B..."></div>
+                    <div class="input-group span-2"><label>Autorizado a retirar/transladar</label><input type="text" id="autorizado" placeholder="(Deixe em branco para 'O PRÓPRIO REQUERENTE')"></div>
+
+                    <div class="section-title">Dados do Falecido(a) e Localização</div>
                     <div class="input-group span-2"><label>Nome do(a) Falecido(a)</label><input type="text" id="nome_falecido" required></div>
-                    <div class="input-group span-1"><label>Data Sepultamento</label><input type="date" id="data_sepultamento" required></div>
-                    <div class="input-group span-1"><label>Cemitério</label>
+                    <div class="input-group span-1"><label>Data Sepultamento</label><input type="date" id="data_sepultamento"></div>
+                    <div class="input-group span-1"><label>Cemitério (Origem)</label>
                         <select id="cemiterio" required>
                             <option value="MARUÍ">MARUÍ</option>
                             <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
@@ -144,7 +156,6 @@
                         </select>
                     </div>
 
-                    <div class="section-title">Serviços e Localização (Requerimento)</div>
                     <div class="input-group span-2"><label>Serviço Requerido</label>
                         <select id="servico_requerido" required>
                             <option value="Exumação">Exumação</option>
@@ -158,6 +169,9 @@
                             <option value="Outros">Outros</option>
                         </select>
                     </div>
+                    <div class="input-group span-2"><label>Cemitério de Destino (Transferências)</label><input type="text" id="cemiterio_destino" placeholder="Para onde vai? Ex: Cemitério de São Gonçalo"></div>
+
+                    <div class="section-title">Sepultura de Origem</div>
                     <div class="input-group span-2"><label>Tipo de Sepultura</label>
                         <select id="tipo_sepultura" required>
                             <option value="Carneiro de adulto">Carneiro de adulto</option>
@@ -173,12 +187,22 @@
                     </div>
                     <div class="input-group span-1"><label>Nº Sepultura</label><input type="text" id="sepul" required></div>
                     <div class="input-group span-1"><label>Quadra</label><input type="text" id="qd" placeholder="A, B, F, G, E..."></div>
-                    <div class="input-group span-2"><label>Proprietário (Se Perpétua)</label><input type="text" id="proprietario"></div>
-                    <div class="input-group span-4"><label>Assunto / Observações</label><input type="text" id="assunto" placeholder="Detalhes adicionais do requerimento"></div>
+                    <div class="input-group span-4"><label>Proprietário (Origem Se Perpétua)</label><input type="text" id="proprietario"></div>
+                    
+                    <div class="input-group span-1"><label>Nº Lacre (Se houver)</label><input type="text" id="lacre" placeholder="Ex: 12345"></div>
+                    <div class="input-group span-3"><label>Serviço de Reforma (Se houver)</label><input type="text" id="servico_reforma" placeholder="Ex: Colocação de Mármore, Revestimento"></div>
+
+                    <div class="section-title">Destino (Apenas para Declarações de Recolhimento/Transferência)</div>
+                    <div class="input-group span-1"><label>Nº Destino</label><input type="text" id="destino_local_nro" placeholder="Nº Nicho/Perpétua"></div>
+                    <div class="input-group span-1"><label>Livro Nº</label><input type="text" id="destino_livro"></div>
+                    <div class="input-group span-1"><label>Fls Nº</label><input type="text" id="destino_fls"></div>
+                    <div class="input-group span-1"><label>Proprietário / Nome de</label><input type="text" id="destino_proprietario"></div>
+
+                    <div class="input-group span-4" style="margin-top: 10px;"><label>Assunto / Observações</label><input type="text" id="assunto" placeholder="Detalhes adicionais do requerimento"></div>
                 </div>
                 <div class="modal-footer-custom" style="padding:20px 30px;">
                     <button type="button" class="btn-modal btn-cancelar" onclick="fecharModal()">Cancelar</button>
-                    <button type="submit" class="btn-modal btn-salvar">Salvar Requerimento</button>
+                    <button type="submit" class="btn-modal btn-salvar">Salvar Todos os Dados</button>
                 </div>
             </form>
         </div>
@@ -213,18 +237,49 @@
     </div>
 
     <div id="modal-visualizar" class="modal">
-        <div class="modal-content" style="max-width: 680px;">
+        <div class="modal-content" style="max-width: 720px;">
             <div class="modal-header"><h3>Ações do Requerimento</h3><span class="close" onclick="fecharModalVisualizar()">×</span></div>
             
             <div id="resumo-dados" style="padding: 20px 30px; background-color: #f8f9fb; border-bottom: 1px solid #ebedf3; font-size: 13px; line-height: 1.6;"></div>
 
-            <div style="padding: 20px; text-align: center;">
-                <p style="margin-bottom: 20px; color: #555; font-size: 12px;">Confira os dados acima. Selecione qual ação deseja realizar para este requerimento.</p>
-                <div class="modal-footer-custom" style="border:none; justify-content: center;">
+            <div style="padding: 20px 30px; text-align: center;">
+                
+                <div style="background: #fdfdfd; padding: 15px; border-radius: 6px; border: 1px dashed #ccc; margin-bottom: 20px; text-align: left;">
+                    <label style="color:var(--primary-color); font-weight:bold; font-size:11px; text-transform:uppercase;">Gerar Declaração Específica</label>
+                    <div style="display:flex; gap:10px; margin-top:8px;">
+                        <select id="select_declaracao" style="flex:1; border: 1px solid #ccc; border-radius: 6px; padding: 8px;">
+                            <option value="saida_nicho_perpetuo">Saída de ossos do nicho perpétuo</option>
+                            <option value="saida_sep_perp">Saída dos ossos da sepultura perpétua</option>
+                            <option value="saida_lacre">Saída da ossada sob lacre</option>
+                            <option value="exumacao_saida">Exumação e saída dos restos mortais</option>
+                            <option value="exumacao_recolhimento_nicho_perp">Exumação e recolhimento da ossada ao nicho perpétuo</option>
+                            <option value="exumacao_recolhimento_nicho_adq">Exumação e recolhimento da ossada ao nicho a ser adquirido</option>
+                            <option value="exumacao_recolhimento_sep_perp">Exumação e recolhimento da ossada a sepultura perpétua</option>
+                            <option value="recolhimento_lacre_nicho_perp">Recolhimento da ossada ao nicho perpétuo (Com lacre)</option>
+                            <option value="entrada_recolhimento_nicho_perp">Entrada de restos mortais e recolhimento ao nicho perpétuo</option>
+                            <option value="entrada_recolhimento_sep_perp">Entrada de restos mortais e recolhimento a sepultura perpétua</option>
+                            <option value="entrada_permissao_nicho">Entrada de restos mortais e permissão de uso de nicho</option>
+                            <option value="entrada_cinzas_sep_perp">Entrada de cinzas e recolhimento a sepultura perpétua</option>
+                            <option value="entrada_cinzas_nicho_perp">Entrada de cinzas e recolhimento ao nicho perpétuo</option>
+                            <option value="permuta_nicho">Permuta de nicho</option>
+                            <option value="permuta_sepultura">Permuta de sepultura</option>
+                            <option value="permissao_uso_sepultura">Permissão de uso de sepultura</option>
+                            <option value="autorizacao_placa_nicho">Autorização para colocação de placa no nicho perpétuo</option>
+                            <option value="servico_reforma_sep_perp">Serviço na sepultura perpétua (Reforma)</option>
+                            <option value="reparo_diversos">Reparo diversos na sepultura perpétua</option>
+                            <option value="capacidade_nicho">Termo para capacidade do nicho e colocação de placa</option>
+                            <option value="declaracao_residencia">Declaração de residência</option>
+                            <option value="cancelamento_processo">Termo de cancelamento de processo</option>
+                        </select>
+                        <button type="button" class="btn-modal" style="background-color: #34495e; color: white;" onclick="imprimirDeclaracao()">📄 Gerar e Imprimir</button>
+                    </div>
+                </div>
+
+                <div class="modal-footer-custom" style="border:none; justify-content: center; padding-top: 0;">
                     <button type="button" class="btn-modal btn-sign-fam" onclick="abrirModalAssinatura('responsavel')">✍️ Assinar Requerente</button>
                     <button type="button" class="btn-modal btn-sign-func" onclick="abrirModalAssinatura('atendente')">✍️ Assinar Equipe</button>
-                    <button type="button" class="btn-modal btn-print-req" onclick="imprimirRequerimento()">📄 Imprimir Requerimento</button>
-                    <button type="button" class="btn-modal btn-print-lib" onclick="imprimirLiberacao()">📄 Imprimir Liberação</button>
+                    <button type="button" class="btn-modal btn-print-req" onclick="imprimirRequerimento()">📄 Form. Requerimento</button>
+                    <button type="button" class="btn-modal btn-print-lib" onclick="imprimirLiberacao()">📄 Form. Liberação</button>
                     <button type="button" class="btn-modal" style="background-color: #27ae60; color: white;" onclick="abrirModalGRM()">💸 Emitir GRM</button>
                 </div>
             </div>
@@ -251,12 +306,12 @@
             <div class="modal-header" style="background-color: #f8f9fb; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
                 <div style="display: flex; align-items: center; gap: 15px;">
                     <h3 style="margin: 0; color: #333;">Emissão de GRM</h3>
-                    <button onclick="window.open('http://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento', '_blank')" class="btn-novo" style="background-color: #f39c12; padding: 6px 12px; font-size: 11px;">🔗 Abrir em Nova Aba</button>
+                    <button onclick="window.open('https://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento', '_blank')" class="btn-novo" style="background-color: #f39c12; padding: 6px 12px; font-size: 11px;">🔗 Abrir em Nova Aba</button>
                 </div>
                 <span class="close" onclick="fecharModalGRM()" style="margin-top: -5px;">×</span>
             </div>
             <div style="flex-grow: 1; width: 100%; background: #fff;">
-                <iframe src="http://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento" style="width: 100%; height: 100%; border: none;"></iframe>
+                <iframe src="https://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento" style="width: 100%; height: 100%; border: none;"></iframe>
             </div>
         </div>
     </div>
