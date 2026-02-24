@@ -61,6 +61,120 @@ window.gerarProtocolo = function() {
     return `${ano}${mes}${dia}-${String(agora.getHours()).padStart(2,'0')}${String(agora.getMinutes()).padStart(2,'0')}`;
 }
 
+// --- LÓGICA DE MESCLAGEM DE PDFS (MODAL PRINCIPAL E ROW) ---
+window.abrirModalUnir = function(protocolo) {
+    document.getElementById('unir-protocolo-row').value = protocolo || 'N/A';
+    document.getElementById('input-pdfs-row').value = '';
+    safeDisplay('modal-unir', 'block');
+}
+
+window.fecharModalUnir = function() {
+    safeDisplay('modal-unir', 'none');
+}
+
+window.mesclarPDFsRow = async function() {
+    const fileInput = document.getElementById('input-pdfs-row');
+    const protocolo = document.getElementById('unir-protocolo-row').value;
+    const files = fileInput.files;
+
+    if (!files || files.length === 0) {
+        alert("Por favor, selecione os arquivos PDF primeiro clicando em 'Escolher arquivos'.");
+        return;
+    }
+    if (files.length === 1) {
+        alert("Selecione pelo menos 2 arquivos para unir (você pode selecionar vários segurando o CTRL).");
+        return;
+    }
+
+    try {
+        const { PDFDocument } = window.PDFLib;
+        const mergedPdf = await PDFDocument.create();
+
+        for (let i = 0; i < files.length; i++) {
+            const arrayBuffer = await files[i].arrayBuffer();
+            const pdf = await PDFDocument.load(arrayBuffer);
+            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            copiedPages.forEach((page) => mergedPdf.addPage(page));
+        }
+
+        const mergedPdfBytes = await mergedPdf.save();
+        const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        let nomeArquivo = protocolo !== 'N/A' ? `E-CIGA_${protocolo}.pdf` : `Documentos_Unidos_E-CIGA.pdf`;
+        
+        a.download = nomeArquivo;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        fileInput.value = "";
+        alert("PDFs unidos com sucesso!");
+        window.fecharModalUnir();
+
+    } catch (error) {
+        console.error("Erro ao unir PDFs:", error);
+        alert("Ocorreu um erro ao processar os arquivos. Certifique-se de que selecionou apenas arquivos em formato PDF.");
+    }
+}
+
+window.mesclarPDFs = async function() {
+    const fileInput = document.getElementById('input-pdfs');
+    const files = fileInput.files;
+
+    if (!files || files.length === 0) {
+        alert("Por favor, selecione os arquivos PDF primeiro clicando em 'Escolher arquivos'.");
+        return;
+    }
+    if (files.length === 1) {
+        alert("Selecione pelo menos 2 arquivos para unir.");
+        return;
+    }
+
+    try {
+        const { PDFDocument } = window.PDFLib;
+        const mergedPdf = await PDFDocument.create();
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await PDFDocument.load(arrayBuffer);
+            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            copiedPages.forEach((page) => {
+                mergedPdf.addPage(page);
+            });
+        }
+
+        const mergedPdfBytes = await mergedPdf.save();
+        
+        const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        let nomeArquivo = "Documentos_Unidos_E-CIGA.pdf";
+        if (dadosAtendimentoAtual && dadosAtendimentoAtual.protocolo) {
+            nomeArquivo = `E-CIGA_${dadosAtendimentoAtual.protocolo}.pdf`;
+        }
+        
+        a.download = nomeArquivo;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        fileInput.value = "";
+        alert("PDFs unidos com sucesso!");
+
+    } catch (error) {
+        console.error("Erro ao unir PDFs:", error);
+        alert("Ocorreu um erro ao processar os arquivos. Certifique-se de que selecionou apenas arquivos em formato PDF.");
+    }
+}
+
 // --- ENVIAR PARA WHATSAPP ---
 window.enviarWhatsApp = function() {
     if (!dadosAtendimentoAtual) {
@@ -943,6 +1057,7 @@ function renderizarTabela(lista) {
                 <div style="display:flex; gap:5px; justify-content:flex-end;">
                     <button class="btn-icon btn-editar-circle" title="Editar Requerimento" onclick="event.stopPropagation();window.editar('${item.id}')">✏️</button>
                     <button class="btn-icon btn-liberar-circle" title="Preencher Liberação" onclick="event.stopPropagation();window.abrirLiberacao('${item.id}')">📝</button>
+                    <button class="btn-icon btn-unir-circle" title="Unir PDFs" onclick="event.stopPropagation();window.abrirModalUnir('${item.protocolo}')">📁</button>
                     <button class="btn-icon btn-excluir-circle" title="Excluir" onclick="event.stopPropagation();window.excluir('${item.id}')">🗑️</button>
                 </div>
             </td>`;
@@ -1249,6 +1364,7 @@ window.excluir = function(id) {
 window.onclick = function(event) { 
     if (event.target == document.getElementById('modal-visualizar')) window.fecharModalVisualizar(); 
     if (event.target == document.getElementById('modal-admin')) window.fecharModalAdmin(); 
+    if (event.target == document.getElementById('modal-unir')) window.fecharModalUnir(); 
 }
 
 // Inicializa Eventos do DOM
@@ -1299,7 +1415,7 @@ window.visualizarDocumentos = function(id) {
             if(resumoEl) {
                 resumoEl.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
-                        <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Protocolo</span><br><strong style="color:var(--primary-color); font-size:14px; font-family:monospace;">${d.protocolo || 'N/A'}</strong></div>
+                        <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Protocolo</span><br><strong style="color:var(--primary-color); font-size:14px;">${d.protocolo || 'N/A'}</strong></div>
                         <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Requerente</span><br><strong style="font-size:14px;">${d.resp_nome ? d.resp_nome.toUpperCase() : '-'}</strong></div>
                         <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Falecido(a)</span><br><strong style="font-size:14px;">${d.nome_falecido ? d.nome_falecido.toUpperCase() : '-'}</strong></div>
                         
@@ -1376,7 +1492,7 @@ window.imprimirRequerimento = function() {
         .chk-item { font-weight: bold; font-size: 14px; }
         .footer-note { font-size: 11px; text-align: justify; margin-top: 15px; padding: 8px; border: 1px dashed #999; background-color: #f9f9f9; border-radius: 4px;}
         .legal { font-size: 9px; text-align: center; margin-top: 15px; font-weight: bold; color: #444; }
-        .box-protocolo { position: absolute; top: 0; right: 0; border: 2px solid #000; padding: 4px 8px; font-weight: bold; font-size: 12px; font-family: monospace; background: #fff; }
+        .box-protocolo { position: absolute; top: 0; right: 0; border: 2px solid #000; padding: 4px 8px; font-weight: bold; font-size: 12px; font-family: sans-serif; background: #fff; }
     </style></head><body>
         <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Bras%C3%A3o_de_Niter%C3%B3i%2C_RJ.svg" class="watermark">
         
@@ -1514,7 +1630,7 @@ window.imprimirLiberacao = function() {
         .label { font-size: 10px; color: #666; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;}
         .value { font-size: 14px; font-weight: bold; border-bottom: 1px solid #000; padding-top: 2px; padding-bottom: 2px; min-height: 16px;}
         .footer-note { font-size: 11px; text-align: justify; margin-top: 15px; padding: 8px; border: 1px dashed #999; background-color: #f9f9f9; border-radius: 4px; line-height: 1.5;}
-        .box-protocolo { position: absolute; top: 0; right: 0; border: 2px solid #000; padding: 4px 8px; font-weight: bold; font-size: 12px; font-family: monospace; background: #fff; }
+        .box-protocolo { position: absolute; top: 0; right: 0; border: 2px solid #000; padding: 4px 8px; font-weight: bold; font-size: 12px; font-family: sans-serif; background: #fff; }
     </style></head><body>
         <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Bras%C3%A3o_de_Niter%C3%B3i%2C_RJ.svg" class="watermark">
 

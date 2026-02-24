@@ -7,7 +7,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
-        .tab-btn.active { background-color: #0056b3 !important; color: white !important; border-bottom: 3px solid #003d80; font-weight: bold; }
         .modal-footer-custom { display: flex; justify-content: center; align-items: center; padding-top: 15px; border-top: 1px solid #eee; flex-wrap: wrap; gap: 8px; }
         .modal-footer-custom button { padding: 8px 12px; font-size: 13px; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px; color: white; font-weight: 500; flex-grow: 1; justify-content: center; max-width: 180px; min-width: 120px; }
         .btn-print-req { background-color: #e67e22; }
@@ -15,17 +14,19 @@
         .btn-close { background-color: #95a5a6; }
         .section-title { font-size: 11px; font-weight: 800; color: #3699ff; text-transform: uppercase; margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 5px; grid-column: span 4; }
         .btn-liberar-circle { background-color: #e8f5e9; color: #2e7d32; }
+        .btn-unir-circle { background-color: #f4ecf8; color: #8e44ad; } /* NOVO BOTÃO DA TABELA */
         
         /* CSS DA ASSINATURA DIGITAL */
         canvas#signature-pad { border: 2px dashed #ccc; background-color: #fff; touch-action: none; border-radius: 5px; cursor: crosshair; width: 100%; }
         .btn-sign-fam { background-color: #663399; }
         .btn-sign-func { background-color: #8e44ad; }
 
-        /* CSS DO PAINEL ADMIN E ESTATÍSTICAS */
+        /* CSS DO PAINEL ADMIN - ABAS MODERNAS */
         .btn-admin { background-color: #34495e; }
-        .tab-header { display: flex; border-bottom: 1px solid #ddd; background-color: #f8f9fa; }
-        .tab-btn { padding: 15px 25px; border: none; background: none; cursor: pointer; font-weight: 600; color: #666; border-bottom: 3px solid transparent; }
-        .tab-btn.active { color: var(--primary-color); border-bottom: 3px solid var(--primary-color); background-color: white; }
+        .tab-header { display: flex; border-bottom: 1px solid #ddd; background-color: #fcfcfc; overflow-x: auto; }
+        .tab-btn { padding: 15px 25px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #5c677d; border-bottom: 3px solid transparent; display: flex; align-items: center; gap: 8px; transition: 0.2s; white-space: nowrap; font-size: 14px;}
+        .tab-btn:hover { background-color: #f0f4f8; }
+        .tab-btn.active { background-color: #0056b3 !important; color: white !important; border-bottom: 3px solid #3699ff !important; }
         .tab-pane { display: none; padding: 20px; }
         .tab-pane.active { display: block; }
         .table-logs { width: 100%; font-size: 12px; border-collapse: collapse; }
@@ -127,7 +128,7 @@
                         <th>Serviço Requerido</th>
                         <th style="min-width: 140px;">Protocolo / Processo</th>
                         <th>Data Registro</th>
-                        <th style="text-align: right; min-width: 150px;">Ações</th>
+                        <th style="text-align: right; min-width: 170px;">Ações</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-corpo"></tbody>
@@ -366,6 +367,16 @@
                     <button type="button" class="btn-modal" style="background-color: #25D366; color: white;" onclick="window.enviarWhatsApp()">📱 WhatsApp</button>
                     <button type="button" class="btn-modal" style="background-color: #27ae60; color: white;" onclick="abrirModalGRM()">💸 Emitir GRM</button>
                 </div>
+                
+                <div style="background: #fdfdfd; padding: 15px; border-radius: 6px; border: 1px dashed #ccc; margin-top: 20px; text-align: left;">
+                    <label style="color:var(--primary-color); font-weight:bold; font-size:11px; text-transform:uppercase;">📁 Juntar PDFs (E-CIGA)</label>
+                    <p style="font-size: 11px; color: #666; margin: 5px 0;">Selecione os PDFs gerados/baixados para uni-los em um único arquivo de envio.</p>
+                    <div style="display:flex; gap:10px; margin-top:8px; align-items: center;">
+                        <input type="file" id="input-pdfs" multiple accept="application/pdf" style="flex:1; border: 1px solid #ccc; border-radius: 6px; padding: 5px; font-size: 12px; background: white;">
+                        <button type="button" class="btn-novo" style="background-color: #8e44ad; padding: 8px 15px; font-size: 12px;" onclick="window.mesclarPDFs()">🔗 Unir PDFs</button>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -396,6 +407,23 @@
             </div>
             <div style="flex-grow: 1; width: 100%; background: #fff;">
                 <iframe src="https://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+    </div>
+    
+    <div id="modal-unir" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>📁 Juntar PDFs (E-CIGA)</h3>
+                <span class="close" onclick="window.fecharModalUnir()">×</span>
+            </div>
+            <div style="padding: 20px;">
+                <p style="font-size: 13px; color: #666; margin-top: 0;">Selecione os PDFs gerados/baixados para uni-los em um único arquivo de envio.</p>
+                <input type="hidden" id="unir-protocolo-row">
+                <div style="display:flex; flex-direction: column; gap:10px; margin-top:15px;">
+                    <input type="file" id="input-pdfs-row" multiple accept="application/pdf" class="admin-input-modern">
+                    <button type="button" class="btn-novo" style="background-color: #8e44ad; justify-content: center; width: 100%; padding: 12px;" onclick="window.mesclarPDFsRow()">🔗 Unir PDFs</button>
+                </div>
             </div>
         </div>
     </div>
@@ -622,6 +650,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
