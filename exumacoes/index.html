@@ -14,21 +14,22 @@
         .btn-close { background-color: #95a5a6; }
         .section-title { font-size: 11px; font-weight: 800; color: #3699ff; text-transform: uppercase; margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 5px; grid-column: span 4; }
         .btn-liberar-circle { background-color: #e8f5e9; color: #2e7d32; }
-        .btn-unir-circle { background-color: #f4ecf8; color: #8e44ad; } /* NOVO BOTÃO DA TABELA */
+        .btn-unir-circle { background-color: #f4ecf8; color: #8e44ad; } 
         
         /* CSS DA ASSINATURA DIGITAL */
         canvas#signature-pad { border: 2px dashed #ccc; background-color: #fff; touch-action: none; border-radius: 5px; cursor: crosshair; width: 100%; }
         .btn-sign-fam { background-color: #663399; }
         .btn-sign-func { background-color: #8e44ad; }
 
-        /* CSS DO PAINEL ADMIN - ABAS MODERNAS */
+        /* CSS DO PAINEL ADMIN - ABAS CORRIGIDAS E DISTRIBUÍDAS */
         .btn-admin { background-color: #34495e; }
-        .tab-header { display: flex; border-bottom: 1px solid #ddd; background-color: #fcfcfc; overflow-x: auto; }
-        .tab-btn { padding: 15px 25px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #5c677d; border-bottom: 3px solid transparent; display: flex; align-items: center; gap: 8px; transition: 0.2s; white-space: nowrap; font-size: 14px;}
-        .tab-btn:hover { background-color: #f0f4f8; }
-        .tab-btn.active { background-color: #0056b3 !important; color: white !important; border-bottom: 3px solid #3699ff !important; }
-        .tab-pane { display: none; padding: 20px; }
+        .tab-header { display: flex; border-bottom: 2px solid #ebedf3; background-color: #fcfcfc; width: 100%; box-sizing: border-box; }
+        .tab-btn { flex: 1; padding: 15px 5px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #5c677d; border-bottom: 3px solid transparent; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; font-size: 13px; outline: none; }
+        .tab-btn:hover { background-color: #f0f4f8; color: #0056b3; }
+        .tab-btn.active { background-color: #ffffff !important; color: #3699ff !important; border-bottom: 3px solid #3699ff !important; }
+        .tab-pane { display: none; padding: 25px 20px; }
         .tab-pane.active { display: block; }
+        
         .table-logs { width: 100%; font-size: 12px; border-collapse: collapse; }
         .table-logs th, .table-logs td { border-bottom: 1px solid #eee; padding: 8px 10px; text-align: left; }
         .btn-imprimir { background-color: white; color: var(--text-dark); border: 1px solid #ebedf3; border-radius: 6px; padding: 8px 15px; font-weight: 600; cursor: pointer; }
@@ -114,8 +115,9 @@
     </header>
 
     <div class="main-content">
-        <div class="controles">
+        <div class="controles" style="display: flex; gap: 10px;">
             <button onclick="abrirModal()" class="btn-novo">+ Novo Requerimento</button>
+            <button onclick="window.abrirModalUnir('')" class="btn-novo" style="background-color: #8e44ad;">📁 Unir PDFs</button>
         </div>
 
         <div class="tabela-container">
@@ -210,10 +212,6 @@
                         </select>
                         <input type="text" id="cemiterio_outro" placeholder="Especifique o cemitério..." style="display:none; margin-top:5px; border-color:var(--primary-color);">
                     </div>
-
-                    <div class="section-title">Dados Administrativos E-CIGA / GRM</div>
-                    <div class="input-group span-2"><label>Processo E-CIGA/SEI</label><input type="text" id="processo" placeholder="Ex: 99/9999/9999"></div>
-                    <div class="input-group span-2"><label>Nº Guia GRM</label><input type="text" id="grm" placeholder="Ex: 12345678"></div>
 
                     <div class="section-title">Serviços e Localização (Requerimento)</div>
                     <div class="input-group span-4">
@@ -431,16 +429,18 @@
     <div id="modal-admin" class="modal">
         <div class="modal-content" style="max-width: 900px; height: 85vh; display: flex; flex-direction: column;">
             <div class="modal-header"><h3>Painel Administrativo</h3><span class="close" onclick="fecharModalAdmin()">×</span></div>
+            
             <div class="tab-header">
                 <button class="tab-btn active" onclick="abrirAba('tab-equipe')">👥 Equipe</button>
                 <button class="tab-btn" onclick="abrirAba('tab-contribuintes')">📇 Contribuintes</button>
-                <button class="tab-btn" onclick="abrirAba('tab-stats')">📊 Estatísticas (Serviços)</button>
+                <button class="tab-btn" onclick="abrirAba('tab-backup')">💾 Backup</button>
+                <button class="tab-btn" onclick="abrirAba('tab-stats')">📊 Estatísticas</button>
                 <button class="tab-btn" onclick="abrirAba('tab-logs')">🕵️ Auditoria</button>
             </div>
+            
             <div class="tab-content-area" style="flex-grow: 1; overflow-y: auto; padding: 20px;">
                 
                 <div id="tab-equipe" class="tab-pane active">
-                    
                     <div id="box-novo-usuario" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #edf2f9;">
                         <strong style="color: #3699ff; display: block; margin-bottom: 15px; font-size: 14px;">Novo Usuário:</strong>
                         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
@@ -457,14 +457,12 @@
                                 <input type="email" id="novo-email" class="admin-input-modern" placeholder="Ex: joao@email.com">
                             </div>
                         </div>
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-                            <div style="grid-column: span 2;">
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                            <div>
                                 <label class="admin-label" style="color: #3699ff;">Senha</label>
                                 <input type="password" id="nova-senha" class="admin-input-modern" placeholder="Senha segura">
                             </div>
-                            <div style="display: flex; align-items: flex-end;">
-                                <button onclick="adicionarFuncionario()" class="admin-btn-modern" style="width: 100%; height: 38px;">+ Adicionar Usuário</button>
-                            </div>
+                            <button onclick="adicionarFuncionario()" class="admin-btn-modern" style="height: 38px;">+ Adicionar Usuário</button>
                         </div>
                     </div>
 
@@ -485,8 +483,8 @@
                                 <input type="email" id="edit-email" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="E-mail">
                             </div>
                         </div>
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
-                            <div style="grid-column: span 2;">
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                            <div>
                                 <label class="admin-label" style="color: #856404;">Nova Senha</label>
                                 <input type="text" id="edit-senha" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Nova Senha">
                             </div>
@@ -588,6 +586,32 @@
                                 <tr><td colspan="5" style="text-align:center; padding: 20px;">Use a busca acima para encontrar contribuintes cadastrados.</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <div id="tab-backup" class="tab-pane">
+                    <h4 style="margin-top:0; color: #5c677d;">Backup e Exportação de Dados</h4>
+                    <p style="font-size: 13px; color: #666; margin-bottom: 25px;">Faça o backup completo do banco de dados ou exporte relatórios específicos contendo Nome, CPF, Processo e GRM.</p>
+                    
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; border: 1px solid #edf2f9; flex: 1; min-width: 280px; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <strong style="color: #3699ff; display: block; margin-bottom: 10px; font-size: 15px;">📦 Backup Completo do Sistema</strong>
+                                <p style="font-size: 12px; color: #777; margin-bottom: 20px; line-height: 1.5;">Baixa todos os dados de requerimentos do banco em um arquivo estruturado bruto (JSON) para segurança e eventual restauração de sistema.</p>
+                            </div>
+                            <button onclick="window.gerarBackupJSON()" class="admin-btn-modern" style="width: 100%;">📥 Baixar Backup Seguro (JSON)</button>
+                        </div>
+                        
+                        <div style="background: #fffaf0; padding: 25px; border-radius: 8px; border: 1px solid #ffeeba; flex: 1; min-width: 280px; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <strong style="color: #856404; display: block; margin-bottom: 10px; font-size: 15px;">📄 Exportar Relatório Específico</strong>
+                                <p style="font-size: 12px; color: #777; margin-bottom: 20px; line-height: 1.5;">Gera e baixa um documento formatado contendo apenas: <b>Nome, CPF, Nº Processo e Nº GRM</b> de todos os requerimentos registrados.</p>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button onclick="window.exportarDadosExcel()" class="admin-btn-modern" style="background: #27ae60; flex: 1;">📊 Baixar Excel</button>
+                                <button onclick="window.exportarDadosPDF()" class="admin-btn-modern" style="background: #c0392b; flex: 1;">📄 Baixar PDF</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

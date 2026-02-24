@@ -52,6 +52,10 @@ function pegarDataISO() {
     return `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}-${String(agora.getDate()).padStart(2,'0')}`; 
 }
 
+const normalizeStr = (str) => {
+    return str ? str.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+};
+
 // FUNÇÃO PARA GERAR O PROTOCOLO
 window.gerarProtocolo = function() {
     const agora = new Date();
@@ -512,7 +516,8 @@ window.abrirAba = function(id) {
 
 // --- BUSCAR CONTRIBUINTES CADASTRADOS (ADMIN) ---
 window.buscarContribuintesAdmin = function() {
-    const termo = document.getElementById('busca-contribuinte-admin').value.trim().toLowerCase();
+    const termoOriginal = document.getElementById('busca-contribuinte-admin').value.trim();
+    const termo = normalizeStr(termoOriginal);
     const tbody = document.getElementById('lista-contribuintes');
     
     if (!termo || termo.length < 3) { 
@@ -536,7 +541,8 @@ window.buscarContribuintesAdmin = function() {
                 let d = doc.data();
                 if (!d.cpf) return; 
                 
-                let stringBusca = `${d.resp_nome || ''} ${d.cpf || ''} ${d.rg || ''} ${d.telefone || ''}`.toLowerCase();
+                let stringBusca = `${d.resp_nome || ''} ${d.cpf || ''} ${d.rg || ''} ${d.telefone || ''}`;
+                stringBusca = normalizeStr(stringBusca);
                 let stringSemPontuacao = stringBusca.replace(/[\.\-\/\(\)\s]/g, '');
 
                 if (stringBusca.includes(termo) || (termoLimpo !== '' && stringSemPontuacao.includes(termoLimpo))) {
@@ -982,10 +988,11 @@ window.carregarTabela = function() {
 }
 
 window.realizarBusca = function() {
-    const termo = document.getElementById('input-busca').value.trim().toLowerCase();
+    const termoOriginal = document.getElementById('input-busca').value.trim();
+    const termo = normalizeStr(termoOriginal);
     const fd = document.getElementById('filtro-data');
     
-    if (!termo) { 
+    if (!termoOriginal) { 
         if (fd && !fd.value) fd.value = pegarDataISO();
         carregarTabela(); 
         return; 
@@ -1013,7 +1020,9 @@ window.realizarBusca = function() {
                     stringBusca += d['telefone'+tSearchIdx] + ' '; 
                     tSearchIdx++; 
                 }
-                stringBusca += `${d.processo || ''} ${d.cemiterio || ''}`.toLowerCase();
+                stringBusca += `${d.processo || ''} ${d.cemiterio || ''}`;
+                
+                stringBusca = normalizeStr(stringBusca);
                 
                 let stringSemPontuacao = stringBusca.replace(/[\.\-\/\(\)\s]/g, '');
 
@@ -1601,7 +1610,7 @@ window.imprimirLiberacao = function() {
     let blocoAssinaturaRequerente = assinaturaResponsavelImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaResponsavelImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
     let blocoAssinaturaAtendente = assinaturaAtendenteImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaAtendenteImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
 
-    const html = `<html><head><title>Liberação Exumação</title><style>
+    const html = `<html><head><title>Liberação</title><style>
         @page { size: A4 portrait; margin: 20mm; }
         body { 
             font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #000; position: relative;
@@ -1640,7 +1649,7 @@ window.imprimirLiberacao = function() {
             <div class="header-subtitle">Secretaria de Mobilidade e Infraestrutura - SEMOBI<br>Subsecretaria de Infraestrutura - SSINF<br>Coordenação dos Cemitérios de Niterói</div>
         </div>
         
-        <div class="doc-title">Liberação de Exumação</div>
+        <div class="doc-title">Liberação</div>
 
         <div class="section">
             <div class="section-title">Dados Administrativos</div>
@@ -1694,8 +1703,7 @@ window.imprimirLiberacao = function() {
             <div>
                 ${blocoAssinaturaRequerente}
                 <div style="border-top: 1px solid #000; padding-top: 5px; min-width: 250px;">
-                    <b>${d.resp_nome.toUpperCase()}</b><br>
-                    <span style="font-size: 11px; color: #555;">(Assinatura do Requerente)</span>
+                    <b>RESPONSÁVEL</b><br>
                 </div>
             </div>
         </div>
