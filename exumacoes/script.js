@@ -16,13 +16,16 @@ let chartInstances = {};
 let dadosEstatisticasExportacao = [];
 let usuarioLogado = null; 
 let dadosAtendimentoAtual = null;
+window.dadosLiberacaoAtual = null;
 
-// VARIÁVEIS GLOBAIS PARA ASSINATURA
+// VARIÁVEIS GLOBAIS PARA ASSINATURA E TELEFONE E CONTRIBUINTES
 let signaturePad = null;
 let isDrawing = false;
 let assinaturaResponsavelImg = null;
 let assinaturaAtendenteImg = null;
 let tipoAssinaturaAtual = ''; 
+window.telCount = 1;
+window.contribuintesMap = {};
 
 try {
     if (typeof firebase !== 'undefined') {
@@ -57,6 +60,96 @@ window.gerarProtocolo = function() {
     const dia = String(agora.getDate()).padStart(2,'0');
     return `${ano}${mes}${dia}-${String(agora.getHours()).padStart(2,'0')}${String(agora.getMinutes()).padStart(2,'0')}`;
 }
+
+// --- ENVIAR PARA WHATSAPP ---
+window.enviarWhatsApp = function() {
+    if (!dadosAtendimentoAtual) {
+        alert("Nenhum atendimento selecionado.");
+        return;
+    }
+    
+    const d = dadosAtendimentoAtual;
+    
+    // Pega o primeiro telefone válido
+    let telefone = d.telefone ? d.telefone.replace(/\D/g, '') : '';
+    if (!telefone) {
+        alert("Nenhum telefone cadastrado para este requerente.");
+        return;
+    }
+    
+    // Formata para o padrão internacional (Brasil)
+    if (telefone.length === 10 || telefone.length === 11) {
+        telefone = "55" + telefone; 
+    }
+
+    let cemDisplay = d.cemiterio === 'OUTRO' ? d.cemiterio_outro : d.cemiterio;
+
+    let msg = `*COORDENAÇÃO DOS CEMITÉRIOS DE NITERÓI*\n\n`;
+    msg += `Olá, *${d.resp_nome ? d.resp_nome.toUpperCase() : 'Requerente'}*.\n`;
+    msg += `Este é o resumo do seu atendimento:\n\n`;
+    msg += `📄 *Protocolo:* ${d.protocolo || 'N/A'}\n`;
+    msg += `👤 *Falecido(a):* ${d.nome_falecido ? d.nome_falecido.toUpperCase() : '-'}\n`;
+    msg += `📍 *Cemitério:* ${cemDisplay ? cemDisplay.toUpperCase() : '-'}\n`;
+    msg += `🛠️ *Serviço(s):* ${d.servico_requerido ? d.servico_requerido.toUpperCase() : '-'}\n`;
+    msg += `🪦 *Sepultura:* Nº ${d.sepul || '-'} / QD ${d.qd || '-'}\n`;
+    
+    if (d.processo || d.grm) {
+        msg += `\n*DADOS ADMINISTRATIVOS:*\n`;
+        if (d.processo) msg += `📂 *Processo:* ${d.processo}\n`;
+        if (d.grm) msg += `🧾 *GRM:* ${d.grm}\n`;
+    }
+
+    msg += `\n_Aguarde enquanto o atendente envia o(s) documento(s) em anexo por aqui._`;
+
+    const url = `https://wa.me/${telefone}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+}
+
+// --- GESTÃO DE MÚLTIPLOS TELEFONES E CEMITÉRIO EXTERNO ---
+window.addTelefone = function(val = "") {
+    window.telCount++;
+    const newId = 'telefone' + window.telCount;
+    if(document.getElementById(newId)) return; 
+    
+    const box = document.getElementById('box-telefones');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = newId;
+    input.style.marginTop = '5px';
+    input.placeholder = 'Telefone Adicional';
+    input.maxLength = 15;
+    input.value = val;
+    input.oninput = function() { window.mascaraTelefone(this) };
+    box.appendChild(input);
+}
+
+window.mascaraTelefone = function(el) {
+    let v = el.value.replace(/\D/g, '');
+    if(v.length === 0) { el.value = ''; return; }
+    if(v.length <= 10) {
+        v = v.replace(/(\d{2})(\d)/, "($1) $2");
+        v = v.replace(/(\d{4})(\d)/, "$1-$2");
+    } else {
+        v = v.replace(/(\d{2})(\d)/, "($1) $2");
+        v = v.replace(/(\d{5})(\d)/, "$1-$2");
+    }
+    el.value = v.substring(0, 15);
+}
+
+window.toggleCemiterioOutro = function() {
+    const select = document.getElementById('cemiterio');
+    const input = document.getElementById('cemiterio_outro');
+    if (select && input) {
+        if (select.value === 'OUTRO') {
+            input.style.display = 'block';
+            input.required = true;
+        } else {
+            input.style.display = 'none';
+            input.required = false;
+            input.value = '';
+        }
+    }
+};
 
 // MASCARA CPF E CNPJ AUTOMÁTICA
 window.aplicarMascaraCpfCnpj = function(el) {
@@ -217,6 +310,13 @@ window.buscarRequerentePorCPF = function() {
 
                 if (d.resp_nome) document.getElementById('resp_nome').value = d.resp_nome;
                 if (d.telefone) document.getElementById('telefone').value = d.telefone;
+                
+                let idx = 2;
+                while(d['telefone'+idx]) {
+                    window.addTelefone(d['telefone'+idx]);
+                    idx++;
+                }
+
                 if (d.rg) document.getElementById('rg').value = d.rg;
                 if (d.endereco) document.getElementById('endereco').value = d.endereco;
                 if (d.bairro) document.getElementById('bairro').value = d.bairro;
@@ -254,7 +354,17 @@ window.checarLoginEnter = function(e) { if(e.key==='Enter') window.fazerLogin();
 window.liberarAcesso = function() {
     safeDisplay('tela-bloqueio', 'none');
     sessionStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
-    document.getElementById('user-display').innerText = usuarioLogado.nome;
+    
+    let avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(usuarioLogado.nome)}&background=random&color=fff&bold=true`;
+    document.getElementById('user-display').innerHTML = `
+        <div class="user-info" style="margin-right: 15px; text-align: left;">
+            <img src="${avatarUrl}" class="user-avatar" alt="Avatar" style="width: 36px; height: 36px; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div style="line-height: 1.2;">
+                <div style="font-weight: 800; color: #3699ff; font-size: 13px; text-transform: uppercase;">${usuarioLogado.nome}</div>
+                <div style="font-size: 10px; color: #888;">${usuarioLogado.email || 'Atendente'}</div>
+            </div>
+        </div>
+    `;
     
     const fd = document.getElementById('filtro-data');
     if(fd && !fd.value) fd.value = pegarDataISO();
@@ -264,7 +374,7 @@ window.liberarAcesso = function() {
 
 window.fazerLogout = function() { sessionStorage.removeItem('usuarioLogado'); window.location.reload(); }
 
-// --- LÓGICA DO ADMIN ---
+// --- LÓGICA DO ADMIN COM NOVA ABA CONTRIBUINTES ---
 window.abrirAdmin = function() { safeDisplay('modal-admin', 'block'); window.abrirAba('tab-equipe'); }
 window.fecharModalAdmin = function() { safeDisplay('modal-admin', 'none'); }
 
@@ -275,41 +385,215 @@ window.abrirAba = function(id) {
     const buttons = document.querySelectorAll('.tab-header .tab-btn');
     buttons.forEach(btn => btn.classList.remove('active'));
     
-    if (id === 'tab-equipe') buttons[0].classList.add('active');
-    if (id === 'tab-stats') buttons[1].classList.add('active');
-    if (id === 'tab-logs') buttons[2].classList.add('active');
+    const activeBtn = document.querySelector(`.tab-header .tab-btn[onclick="abrirAba('${id}')"]`);
+    if(activeBtn) activeBtn.classList.add('active');
 
     if(id==='tab-equipe') window.listarEquipe();
     if(id==='tab-logs') window.carregarLogs();
     if(id==='tab-stats') window.carregarEstatisticas('7');
+    if(id==='tab-contribuintes') {
+        setTimeout(() => document.getElementById('busca-contribuinte-admin').focus(), 100);
+    }
 }
+
+// --- BUSCAR CONTRIBUINTES CADASTRADOS (ADMIN) ---
+window.buscarContribuintesAdmin = function() {
+    const termo = document.getElementById('busca-contribuinte-admin').value.trim().toLowerCase();
+    const tbody = document.getElementById('lista-contribuintes');
+    
+    if (!termo || termo.length < 3) { 
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Digite pelo menos 3 caracteres para buscar.</td></tr>';
+        return; 
+    }
+    
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Buscando...</td></tr>';
+    
+    const termoLimpo = termo.replace(/[\.\-\/\(\)\s]/g, '');
+    const database = getDB();
+
+    database.collection("requerimentos_exumacao")
+        .orderBy("data_registro", "desc")
+        .limit(1000)
+        .get()
+        .then((snap) => {
+            window.contribuintesMap = {};
+            
+            snap.forEach(doc => {
+                let d = doc.data();
+                if (!d.cpf) return; 
+                
+                let stringBusca = `${d.resp_nome || ''} ${d.cpf || ''} ${d.rg || ''} ${d.telefone || ''}`.toLowerCase();
+                let stringSemPontuacao = stringBusca.replace(/[\.\-\/\(\)\s]/g, '');
+
+                if (stringBusca.includes(termo) || (termoLimpo !== '' && stringSemPontuacao.includes(termoLimpo))) {
+                    if (!window.contribuintesMap[d.cpf]) {
+                        window.contribuintesMap[d.cpf] = d;
+                    }
+                }
+            });
+
+            renderizarTabelaContribuintes(Object.values(window.contribuintesMap));
+        }).catch(e => {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:red;">Erro na busca.</td></tr>';
+            console.error(e);
+        });
+}
+
+function renderizarTabelaContribuintes(lista) {
+    const tbody = document.getElementById('lista-contribuintes');
+    tbody.innerHTML = ''; 
+    
+    if (lista.length === 0) { 
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Nenhum contribuinte encontrado.</td></tr>'; 
+        return; 
+    }
+
+    lista.forEach(item => {
+        let enderecoCompleto = `${item.endereco || ''}, ${item.numero || 'S/N'} - ${item.bairro || ''} - ${item.municipio || ''}`;
+        
+        tbody.innerHTML += `
+            <tr>
+                <td><b style="color:#333;">${item.resp_nome ? item.resp_nome.toUpperCase() : '-'}</b></td>
+                <td><span style="color:#3699ff; font-weight:bold;">${item.cpf || '-'}</span><br><span style="font-size:11px; color:#666;"><b>RG:</b> ${item.rg || '-'}</span></td>
+                <td>${item.telefone || '-'}</td>
+                <td style="font-size:11px; color:#555;">${enderecoCompleto}</td>
+                <td style="text-align:right;">
+                    <button class="btn-action-square btn-action-edit" onclick="window.editarContribuinteAdmin('${item.cpf}')" title="Editar Contribuinte">✏️</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+window.editarContribuinteAdmin = function(cpf) {
+    const d = window.contribuintesMap[cpf];
+    if (!d) return;
+    
+    document.getElementById('edit-cont-nome').value = d.resp_nome || '';
+    document.getElementById('edit-cont-cpf').value = d.cpf || '';
+    document.getElementById('edit-cont-rg').value = d.rg || '';
+    document.getElementById('edit-cont-tel').value = d.telefone || '';
+    document.getElementById('edit-cont-cep').value = d.cep || '';
+    document.getElementById('edit-cont-end').value = d.endereco || '';
+    document.getElementById('edit-cont-num').value = d.numero || '';
+    document.getElementById('edit-cont-comp').value = d.complemento || '';
+    document.getElementById('edit-cont-bairro').value = d.bairro || '';
+    document.getElementById('edit-cont-mun').value = d.municipio || '';
+    
+    document.getElementById('div-editar-contribuinte').classList.remove('hidden');
+    document.getElementById('edit-cont-nome').focus();
+}
+
+window.cancelarEdicaoContribuinte = function() {
+    document.getElementById('div-editar-contribuinte').classList.add('hidden');
+}
+
+window.salvarEdicaoContribuinte = function() {
+    const cpf = document.getElementById('edit-cont-cpf').value;
+    if (!cpf) return;
+
+    const dadosAtualizados = {
+        resp_nome: document.getElementById('edit-cont-nome').value.trim(),
+        rg: document.getElementById('edit-cont-rg').value.trim(),
+        telefone: document.getElementById('edit-cont-tel').value.trim(),
+        cep: document.getElementById('edit-cont-cep').value.trim(),
+        endereco: document.getElementById('edit-cont-end').value.trim(),
+        numero: document.getElementById('edit-cont-num').value.trim(),
+        complemento: document.getElementById('edit-cont-comp').value.trim(),
+        bairro: document.getElementById('edit-cont-bairro').value.trim(),
+        municipio: document.getElementById('edit-cont-mun').value.trim()
+    };
+
+    const database = getDB();
+    
+    database.collection("requerimentos_exumacao").where("cpf", "==", cpf).get().then(snap => {
+        const batch = database.batch();
+        snap.forEach(doc => {
+            batch.update(doc.ref, dadosAtualizados);
+        });
+        
+        return batch.commit().then(() => {
+            alert("Dados do contribuinte atualizados em todos os requerimentos com sucesso!");
+            database.collection("auditoria").add({ 
+                data_log: new Date().toISOString(), 
+                usuario: usuarioLogado ? usuarioLogado.nome : 'Anon', 
+                acao: "EDIÇÃO", 
+                detalhe: `Atualização global do contribuinte CPF: ${cpf}`,
+                sistema: "Exumacao" 
+            });
+            window.cancelarEdicaoContribuinte();
+            window.buscarContribuintesAdmin();
+        });
+    }).catch(err => {
+        console.error(err);
+        alert("Erro ao atualizar contribuinte.");
+    });
+}
+
+// --- FIM LÓGICA CONTRIBUINTES ---
 
 window.listarEquipe = function() {
     const database = getDB();
-    const ul = document.getElementById('lista-equipe');
-    if(!database || !ul) return;
+    const tbody = document.getElementById('lista-equipe');
+    if(!database || !tbody) return;
     
     if (equipeUnsubscribe) equipeUnsubscribe();
     equipeUnsubscribe = database.collection("equipe").orderBy("nome").onSnapshot(snap => {
-        ul.innerHTML = '';
+        tbody.innerHTML = '';
         snap.forEach(doc => {
             const u = doc.data();
-            ul.innerHTML += `<li>
-                <span style="flex-grow:1;"><b>${u.nome}</b> <span style="color:#888; font-size:11px;">(${u.login})</span></span>
-                <div>
-                    <button class="btn-icon" onclick="window.editarFuncionario('${doc.id}')" style="margin-right:5px; cursor:pointer;" title="Editar">✏️</button>
-                    <button class="btn-icon" onclick="window.excluirFuncionario('${doc.id}')" style="color:red; cursor:pointer;" title="Excluir">🗑️</button>
-                </div>
-            </li>`;
+            
+            let avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(u.nome)}&background=random&color=fff&bold=true`;
+            
+            tbody.innerHTML += `<tr>
+                <td>
+                    <div class="user-info">
+                        <img src="${avatarUrl}" class="user-avatar" alt="Avatar">
+                        <div>
+                            <div style="font-weight: 600; color: #333; font-size: 14px;">${u.nome}</div>
+                            <div style="font-size: 11px; color: #888;">${u.email || 'Sem e-mail'}</div>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <span style="color: #555; font-weight: 500;">${u.login}</span>
+                </td>
+                <td>
+                    <div style="display:flex; align-items:center;">
+                        <span class="senha-oculta" data-senha="${u.senha}">••••••</span>
+                        <button type="button" class="btn-action-square btn-action-view" onclick="window.toggleSenha(this)" title="Ver Senha">👁️</button>
+                    </div>
+                </td>
+                <td>
+                    <div class="action-group">
+                        <button type="button" class="btn-action-square btn-action-edit" onclick="window.editarFuncionario('${doc.id}')" title="Editar">✏️</button>
+                        <button type="button" class="btn-action-square btn-action-del" onclick="window.excluirFuncionario('${doc.id}')" title="Excluir">🗑️</button>
+                    </div>
+                </td>
+            </tr>`;
         });
     });
 }
 
+window.toggleSenha = function(btn) {
+    const span = btn.previousElementSibling;
+    if (span.innerText === '••••••') {
+        span.innerText = span.getAttribute('data-senha');
+        span.style.letterSpacing = 'normal';
+        span.style.fontSize = '13px';
+    } else {
+        span.innerText = '••••••';
+        span.style.letterSpacing = '2px';
+        span.style.fontSize = '16px';
+    }
+}
+
 window.adicionarFuncionario = function() {
-    const nome = document.getElementById('novo-nome').value;
-    const login = document.getElementById('novo-login').value;
-    const email = document.getElementById('novo-email').value;
-    const senha = document.getElementById('nova-senha').value;
+    const nome = document.getElementById('novo-nome').value.trim();
+    const login = document.getElementById('novo-login').value.trim();
+    const email = document.getElementById('novo-email').value.trim();
+    const senha = document.getElementById('nova-senha').value.trim();
+    
     if(!nome || !login || !senha) { alert("Preencha nome, login e senha."); return; }
     getDB().collection("equipe").add({ nome, login, email, senha }).then(() => {
         alert("Usuário adicionado!");
@@ -327,7 +611,7 @@ window.editarFuncionario = function(id) {
             document.getElementById('edit-id').value = doc.id;
             document.getElementById('edit-nome').value = u.nome;
             document.getElementById('edit-login').value = u.login;
-            document.getElementById('edit-email').value = u.email;
+            document.getElementById('edit-email').value = u.email || '';
             document.getElementById('edit-senha').value = u.senha;
             document.getElementById('box-novo-usuario').classList.add('hidden');
             document.getElementById('div-editar-usuario').classList.remove('hidden');
@@ -337,9 +621,10 @@ window.editarFuncionario = function(id) {
 
 window.salvarEdicaoUsuario = function() {
     const id = document.getElementById('edit-id').value;
-    const nome = document.getElementById('edit-nome').value;
-    const email = document.getElementById('edit-email').value;
-    const senha = document.getElementById('edit-senha').value;
+    const nome = document.getElementById('edit-nome').value.trim();
+    const email = document.getElementById('edit-email').value.trim();
+    const senha = document.getElementById('edit-senha').value.trim();
+    
     if(!nome || !senha) { alert("Nome e senha são obrigatórios."); return; }
     getDB().collection("equipe").doc(id).update({ nome, email, senha }).then(() => { alert("Usuário atualizado!"); window.cancelarEdicao(); }).catch(e => alert("Erro: " + e));
 }
@@ -430,6 +715,8 @@ window.carregarEstatisticas = function(modo) {
     
     let dInicio = new Date();
     let dString = "";
+    let contagemCemiterios = {};
+    let totalRequerimentos = 0;
 
     if (modo === 'mes') {
         dInicio = new Date(dInicio.getFullYear(), dInicio.getMonth(), 1);
@@ -441,14 +728,32 @@ window.carregarEstatisticas = function(modo) {
     
     database.collection("requerimentos_exumacao").where("data_registro", ">=", dString).onSnapshot(snap => {
         let servicos = {};
+        contagemCemiterios = {};
+        totalRequerimentos = 0;
+
         snap.forEach(doc => {
             const d = doc.data();
+            totalRequerimentos++;
+            
+            // Contagem de Serviços Múltiplos
             if(d.servico_requerido) { 
-                const k = d.servico_requerido.trim().toUpperCase(); 
-                servicos[k] = (servicos[k] || 0) + 1; 
+                const servicosArray = d.servico_requerido.split(',').map(s => s.trim().toUpperCase());
+                servicosArray.forEach(k => {
+                    if(k) servicos[k] = (servicos[k] || 0) + 1; 
+                });
             }
+
+            // Contagem de Cemitérios
+            let cemNome = d.cemiterio ? d.cemiterio.toUpperCase() : "N/A";
+            if (cemNome === 'OUTRO' && d.cemiterio_outro) cemNome = d.cemiterio_outro.toUpperCase();
+            contagemCemiterios[cemNome] = (contagemCemiterios[cemNome] || 0) + 1;
         });
+
+        // Atualiza KPI Total
+        const elTotal = document.getElementById('kpi-total');
+        if (elTotal) elTotal.innerText = totalRequerimentos;
         
+        // Renderiza Gráfico 1: Serviços
         const sorted = Object.entries(servicos).sort((a,b) => b[1] - a[1]).slice(0, 10);
         const labels = sorted.map(x => x[0]);
         const data = sorted.map(x => x[1]);
@@ -458,10 +763,57 @@ window.carregarEstatisticas = function(modo) {
             if(chartInstances['servicos']) chartInstances['servicos'].destroy();
             chartInstances['servicos'] = new Chart(ctx, {
                 type: 'bar',
-                data: { labels: labels, datasets: [{ label: 'Qtd. de Serviços', data: data, backgroundColor: '#3699ff' }] },
-                options: { indexAxis: 'y', maintainAspectRatio: false, scales: { x: { beginAtZero: true } } }
+                data: { 
+                    labels: labels, 
+                    datasets: [{ 
+                        label: 'Qtd. de Serviços', 
+                        data: data, 
+                        backgroundColor: 'rgba(54, 153, 255, 0.85)',
+                        borderRadius: 6,
+                        barPercentage: 0.6
+                    }] 
+                },
+                options: { 
+                    indexAxis: 'y', 
+                    maintainAspectRatio: false, 
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        x: { beginAtZero: true, grid: { display: false } },
+                        y: { grid: { display: false } }
+                    } 
+                }
             });
         }
+
+        // Renderiza Gráfico 2: Cemitérios (Doughnut)
+        const sortedCem = Object.entries(contagemCemiterios).sort((a,b) => b[1] - a[1]);
+        const labelsCem = sortedCem.map(x => x[0]);
+        const dataCem = sortedCem.map(x => x[1]);
+
+        const ctxCem = document.getElementById('grafico-cemiterios');
+        if(ctxCem && window.Chart) {
+            if(chartInstances['cemiterios']) chartInstances['cemiterios'].destroy();
+            chartInstances['cemiterios'] = new Chart(ctxCem, {
+                type: 'doughnut',
+                data: {
+                    labels: labelsCem,
+                    datasets: [{
+                        data: dataCem,
+                        backgroundColor: ['#3699ff', '#27ae60', '#f39c12', '#e74c3c', '#9b59b6', '#34495e', '#e67e22'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
         dadosEstatisticasExportacao = sorted.map(([c,q]) => ({"Serviço": c, "Quantidade": q}));
     });
 }
@@ -525,16 +877,13 @@ window.realizarBusca = function() {
         return; 
     }
     
-    // Limpa a data para buscar globalmente no banco
     if (fd) fd.value = "";
 
     const database = getDB();
     if (unsubscribe) unsubscribe();
     
-    // Remove pontuações para não dar falha em buscas de CPF ou Telefones formatados
     const termoSemPontuacao = termo.replace(/[\.\-\/\(\)\s]/g, '');
 
-    // Busca amplo limite localmente para permitir filtro flexivel (OR em múltiplos campos)
     unsubscribe = database.collection("requerimentos_exumacao")
         .orderBy("data_registro", "desc")
         .limit(1000)
@@ -544,12 +893,16 @@ window.realizarBusca = function() {
                 let d = doc.data(); 
                 d.id = doc.id; 
                 
-                // Concatena todos os campos possíveis em uma string única
-                let stringBusca = `${d.protocolo || ''} ${d.resp_nome || ''} ${d.nome_falecido || ''} ${d.cpf || ''} ${d.rg || ''} ${d.telefone || ''} ${d.processo || ''} ${d.cemiterio || ''}`.toLowerCase();
+                let stringBusca = `${d.protocolo || ''} ${d.resp_nome || ''} ${d.nome_falecido || ''} ${d.cpf || ''} ${d.rg || ''} ${d.telefone || ''} `;
+                let tSearchIdx = 2;
+                while(d['telefone'+tSearchIdx]) { 
+                    stringBusca += d['telefone'+tSearchIdx] + ' '; 
+                    tSearchIdx++; 
+                }
+                stringBusca += `${d.processo || ''} ${d.cemiterio || ''}`.toLowerCase();
                 
                 let stringSemPontuacao = stringBusca.replace(/[\.\-\/\(\)\s]/g, '');
 
-                // Compara termo com pontuação ou sem pontuação
                 if (stringBusca.includes(termo) || (termoSemPontuacao !== '' && stringSemPontuacao.includes(termoSemPontuacao))) {
                     lista.push(d); 
                 }
@@ -569,15 +922,21 @@ function renderizarTabela(lista) {
         
         let dataF = item.data_registro ? formatarDataInversa(item.data_registro.split('T')[0]) : '-';
 
+        let telsList = item.telefone || '';
+        let tIndex = 2;
+        while(item['telefone'+tIndex]) { telsList += ' / ' + item['telefone'+tIndex]; tIndex++; }
+
+        let cemDisplay = item.cemiterio === 'OUTRO' ? item.cemiterio_outro : item.cemiterio;
+
         tr.innerHTML = `
-            <td style="vertical-align:middle;"><b>${item.resp_nome.toUpperCase()}</b><br><span style="font-size:11px;">Tel: ${item.telefone}</span></td>
+            <td style="vertical-align:middle;"><b>${item.resp_nome.toUpperCase()}</b><br><span style="font-size:11px;">Tel: ${telsList}</span></td>
             <td style="vertical-align:middle;"><b>${item.nome_falecido.toUpperCase()}</b></td>
-            <td style="vertical-align:middle;">${item.cemiterio}</td>
+            <td style="vertical-align:middle;">${cemDisplay}</td>
             <td style="vertical-align:middle;">${item.servico_requerido}</td>
-            <td style="vertical-align:middle; font-size:11px;">
-                <b>Prot: <span style="font-family:monospace; color:var(--primary-color);">${item.protocolo || '-'}</span></b><br>
-                Proc: ${item.processo || '-'}<br>
-                GRM: ${item.grm || '-'}
+            <td style="vertical-align:middle; font-size:13px; line-height: 1.5;">
+                <div style="color: #3699ff;"><b>Prot:</b> <span style="font-weight:bold;">${item.protocolo || '-'}</span></div>
+                <div style="color: #d35400;"><b>Proc:</b> <span style="font-weight:bold;">${item.processo || '-'}</span></div>
+                <div style="color: #27ae60;"><b>GRM:</b> <span style="font-weight:bold;">${item.grm || '-'}</span></div>
             </td>
             <td style="vertical-align:middle;">${dataF}</td>
             <td style="text-align:right; vertical-align:middle;">
@@ -596,6 +955,19 @@ window.abrirModal = function() {
     document.getElementById('form-atendimento').reset();
     document.getElementById('docId').value = "";
     document.getElementById('protocolo').value = "";
+    
+    const box = document.getElementById('box-telefones');
+    if (box) {
+        const inputs = box.querySelectorAll('input');
+        for(let i=1; i<inputs.length; i++) box.removeChild(inputs[i]);
+        window.telCount = 1;
+    }
+
+    if(document.getElementById('cemiterio_outro')) {
+        document.getElementById('cemiterio_outro').style.display = 'none';
+        document.getElementById('cemiterio_outro').required = false;
+    }
+
     if (usuarioLogado && usuarioLogado.nome) document.getElementById('atendente_sistema').value = usuarioLogado.nome;
     safeDisplay('modal', 'block');
 }
@@ -607,14 +979,42 @@ window.editar = function(id) {
     getDB().collection("requerimentos_exumacao").doc(id).get().then(doc => {
         if(doc.exists) {
             const d = doc.data();
-            for (let key in d) { const el = document.getElementById(key); if(el) el.value = d[key]; }
+            
+            const box = document.getElementById('box-telefones');
+            if (box) {
+                const inputs = box.querySelectorAll('input');
+                for(let i=1; i<inputs.length; i++) box.removeChild(inputs[i]);
+                window.telCount = 1;
+            }
+            
+            let idx = 2;
+            while(d['telefone'+idx]) {
+                window.addTelefone(d['telefone'+idx]);
+                idx++;
+            }
+
+            for (let key in d) { 
+                const el = document.getElementById(key); 
+                if(el && el.type !== 'file') {
+                    if (el.tagName === 'SELECT' && el.multiple) {
+                        let values = d[key] ? d[key].split(', ') : [];
+                        Array.from(el.options).forEach(opt => {
+                            opt.selected = values.includes(opt.value);
+                        });
+                    } else {
+                        el.value = d[key]; 
+                    }
+                }
+            }
+            
+            window.toggleCemiterioOutro();
             document.getElementById('docId').value = doc.id;
             safeDisplay('modal', 'block');
         }
     });
 }
 
-// SALVAR REQUERIMENTO (COM AUDITORIA ISOLADA)
+// SALVAR REQUERIMENTO
 const form = document.getElementById('form-atendimento');
 if(form) {
     form.onsubmit = (e) => {
@@ -623,7 +1023,14 @@ if(form) {
         const id = document.getElementById('docId').value;
         let dados = {};
         Array.from(form.elements).forEach(el => {
-            if(el.id && el.type !== 'submit' && el.type !== 'button') { dados[el.id] = el.value; }
+            if(el.id && el.type !== 'submit' && el.type !== 'button') { 
+                if (el.tagName === 'SELECT' && el.multiple) {
+                    let values = Array.from(el.selectedOptions).map(opt => opt.value);
+                    dados[el.id] = values.join(', ');
+                } else {
+                    dados[el.id] = el.value; 
+                }
+            }
         });
 
         if(!id) {
@@ -641,26 +1048,174 @@ if(form) {
     }
 }
 
+// --- LÓGICA DE AUTO-PREENCHIMENTO DO TEXTO DE LIBERAÇÃO ---
+window.preencherReferenteAutomatico = function() {
+    if (window.dadosLiberacaoAtual) {
+        document.getElementById('referente_a').value = window.gerarTextoReferenteA(window.dadosLiberacaoAtual);
+    } else {
+        alert("Aguarde os dados carregarem...");
+    }
+}
+
+window.gerarTextoReferenteA = function(d) {
+    let s = d.servico_requerido ? d.servico_requerido.toUpperCase() : "";
+    let servicosSelecionados = s.split(',').map(x => x.trim()).filter(x => x !== "");
+    let servicosProcessados = [];
+    
+    let falecido = d.nome_falecido ? d.nome_falecido.toUpperCase() : "(NOME DO FALECIDO)";
+    let dtSepul = formatarDataInversa(d.data_sepultamento) || "(DATA)";
+    let tipoSepul = d.tipo_sepultura ? d.tipo_sepultura.toUpperCase() : "(TIPO DE SEPULTURA)";
+    let sepul = d.sepul || "XXX";
+    let quadra = d.qd ? `DA QUADRA ${d.qd.toUpperCase()}` : "";
+    let cemOrigem = d.cemiterio === "OUTRO" ? (d.cemiterio_outro ? d.cemiterio_outro.toUpperCase() : "(OUTRO CEMITÉRIO)") : (d.cemiterio ? d.cemiterio.toUpperCase() : "(CEMITÉRIO DE ORIGEM)");
+    let cemDestino = d.cemiterio_destino ? d.cemiterio_destino.toUpperCase() : "(CEMITÉRIO DE DESTINO)";
+    let lacre = d.lacre || "";
+    
+    let destTipo = d.destino_tipo_sepultura ? d.destino_tipo_sepultura.toUpperCase() : "(TIPO DESTINO)";
+    let destNro = d.destino_local_nro || "XXX";
+    let destLivro = d.destino_livro || "X";
+    let destFls = d.destino_fls || "X";
+    let destProp = d.destino_proprietario ? d.destino_proprietario.toUpperCase() : "(NOME DO DONO)";
+    let propOrigem = d.proprietario ? d.proprietario.toUpperCase() : "(NOME DO DONO)";
+    let processo = d.processo || "XXXXXXXX/XXXX";
+    let assunto = d.assunto ? d.assunto.toUpperCase() : "(MOTIVO)";
+    let servReforma = d.servico_reforma ? d.servico_reforma.toUpperCase() : "MÁRMORE OU GRANITO";
+
+    let textoPrincipal = "";
+    let textosExtras = [];
+
+    if (s.includes("EXUMAÇÃO") && s.includes("SAÍDA DE OSSOS")) {
+        textoPrincipal = `EXUMAÇÃO E SAÍDA DE OSSOS DA ${tipoSepul} N° ${sepul} ${quadra} ONDE FOI INUMADO ${falecido} NO DIA ${dtSepul} DO CEMITÉRIO MUNICIPAL ${cemOrigem} PARA O CEMITÉRIO ${cemDestino}`;
+        servicosProcessados.push("EXUMAÇÃO", "SAÍDA DE OSSOS");
+    } 
+    else if (s.includes("EXUMAÇÃO") && s.includes("RECOLHIMENTO")) {
+        if (!d.destino_local_nro && (d.processo || !d.destino_tipo_sepultura)) {
+            textoPrincipal = `EXUMAÇÃO DA ${tipoSepul} N° ${sepul} ${quadra} ONDE FOI INUMADO ${falecido} NO DIA ${dtSepul} E RECOLHER AO NICHO A SER ADQUIRIDO ATRAVÉS DO PROCESSO N° ${processo} NO CEMITÉRIO MUNICIPAL ${cemDestino !== '(CEMITÉRIO DE DESTINO)' ? cemDestino : cemOrigem}`;
+        } else if (destTipo === tipoSepul && destNro === sepul) {
+            textoPrincipal = `EXUMAÇÃO DA ${tipoSepul} PERPÉTUA N° ${sepul} ${quadra} ONDE FOI INUMADO ${falecido} NO DIA ${dtSepul} E RECOLHER A PRÓPRIA SEPULTURA REGISTRADA NO LIVRO ${destLivro} AS FOLHAS N° ${destFls} EM NOME DE ${propOrigem} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`;
+        } else {
+            textoPrincipal = `EXUMAÇÃO DA ${tipoSepul} N° ${sepul} ${quadra} ONDE FOI INUMADO ${falecido} NO DIA ${dtSepul} E RECOLHER AO ${destTipo} PERPÉTUO N° ${destNro} REGISTRADO NO LIVRO ${destLivro} AS FOLHAS N° ${destFls} EM NOME DE ${destProp} NO CEMITÉRIO MUNICIPAL ${cemDestino !== '(CEMITÉRIO DE DESTINO)' ? cemDestino : cemOrigem}`;
+        }
+        servicosProcessados.push("EXUMAÇÃO", "RECOLHIMENTO");
+    }
+    else if (s.includes("EXUMAÇÃO") && s.includes("PERMISSÃO DE USO")) {
+        textoPrincipal = `EXUMAÇÃO DA ${tipoSepul} N° ${sepul} ${quadra} ONDE FOI INUMADO ${falecido} NO DIA ${dtSepul} E PERMISSÃO DE USO DE 1 (UM) NICHO NO CEMITÉRIO MUNICIPAL ${cemDestino !== '(CEMITÉRIO DE DESTINO)' ? cemDestino : cemOrigem}`;
+        servicosProcessados.push("EXUMAÇÃO", "PERMISSÃO DE USO");
+    }
+    else if ((s.includes("ENTRADA DE OSSOS") || s.includes("ENTRADA DE CINZAS")) && s.includes("PERMISSÃO DE USO")) {
+        textoPrincipal = `ENTRADA DE OSSOS/CINZAS DE ${falecido} VINDAS DO CEMITÉRIO ${cemOrigem} E PERMISSÃO DE USO DE 1 (UM) NICHO NO CEMITÉRIO MUNICIPAL ${cemDestino !== '(CEMITÉRIO DE DESTINO)' ? cemDestino : "(CEMITÉRIO)"}`;
+        servicosProcessados.push("ENTRADA DE OSSOS / CINZAS", "PERMISSÃO DE USO");
+    }
+    else if ((s.includes("ENTRADA DE OSSOS") || s.includes("ENTRADA DE CINZAS")) && s.includes("RECOLHIMENTO")) {
+        textoPrincipal = `ENTRADA DE OSSOS/CINZAS DE ${falecido} VINDAS DO CEMITÉRIO ${cemOrigem} E RECOLHER AO ${destTipo} PERPÉTUO N° ${destNro} REGISTRADO NO LIVRO ${destLivro} AS FOLHAS N° ${destFls} EM NOME DE ${destProp} NO CEMITÉRIO MUNICIPAL ${cemDestino !== '(CEMITÉRIO DE DESTINO)' ? cemDestino : "(CEMITÉRIO)"}`;
+        servicosProcessados.push("ENTRADA DE OSSOS / CINZAS", "RECOLHIMENTO");
+    }
+    else if (s.includes("RECOLHIMENTO") && lacre !== "") {
+        textoPrincipal = `RECOLHIMENTO DOS RESTOS MORTAIS DE ${falecido} IDENTIFICADOS PELO LACRE ${lacre} QUE SE ENCONTRAVAM NA ${tipoSepul} N° ${sepul} AO ${destTipo} PERPÉTUO N° ${destNro} REGISTRADO NO LIVRO ${destLivro} AS FOLHAS N° ${destFls} EM NOME DE ${destProp} NO CEMITÉRIO MUNICIPAL ${cemDestino !== '(CEMITÉRIO DE DESTINO)' ? cemDestino : cemOrigem}`;
+        servicosProcessados.push("RECOLHIMENTO");
+    }
+    else if (s.includes("PERMUTA")) {
+        textoPrincipal = `PERMUTA DA SEPULTURA/NICHO PERPÉTUO N° ${sepul} POR MOTIVO DE ${assunto} REGISTRADO NO LIVRO ${destLivro !== 'X' ? destLivro : (d.livro||'X')} AS FOLHAS N° ${destFls !== 'X' ? destFls : (d.fls||'X')} EM NOME DE ${propOrigem} POR OUTRA VAGA NO CEMITÉRIO MUNICIPAL ${cemDestino !== '(CEMITÉRIO DE DESTINO)' ? cemDestino : cemOrigem}`;
+        servicosProcessados.push("PERMUTA");
+    }
+    
+    // Processa os serviços que sobraram e anexa inteligentemente
+    servicosSelecionados.forEach(serv => {
+        let alreadyProcessed = servicosProcessados.some(p => serv === p || p.includes(serv));
+        if (!alreadyProcessed) {
+            if (serv.includes("LICENÇA COM ÔNUS PARA COLOCAÇÃO DE LAPIDE")) {
+                if (destNro !== "XXX" || sepul !== "XXX") {
+                    let num = destNro !== "XXX" ? destNro : sepul;
+                    let tipo = destTipo !== "(TIPO DESTINO)" ? destTipo : tipoSepul;
+                    let livro = destLivro !== "X" ? destLivro : "(LIVRO)";
+                    let fls = destFls !== "X" ? destFls : "(FLS)";
+                    let dono = destProp !== "(NOME DO DONO)" ? destProp : propOrigem;
+                    textosExtras.push(`LICENÇA COM ÔNUS PARA COLOCAÇÃO DE LÁPIDE DE IDENTIFICAÇÃO EM MÁRMORE OU GRANITO COM INSCRIÇÕES DE NOME, FOTO E DATA NO ${tipo} PERPÉTUO N° ${num} REGISTRADO NO LIVRO ${livro} AS FOLHAS N° ${fls} EM NOME DE ${dono} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`);
+                } else {
+                    textosExtras.push(`LICENÇA COM ÔNUS PARA COLOCAÇÃO DE LÁPIDE DE IDENTIFICAÇÃO EM MÁRMORE OU GRANITO COM INSCRIÇÕES DE NOME, FOTO E DATA NO NICHO A SER ADQUIRIDO ATRAVÉS DO PROCESSO N° ${processo} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`);
+                }
+            }
+            else if (serv.includes("REVESTIMENTO") || serv.includes("REFORMA")) {
+                textosExtras.push(`SERVIÇO EM ${servReforma} NA ${tipoSepul} PERPÉTUA N° ${sepul} REGISTRADO NO LIVRO ${destLivro !== 'X' ? destLivro : (d.livro||'X')} AS FOLHAS N° ${destFls !== 'X' ? destFls : (d.fls||'X')} EM NOME DE ${propOrigem} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`);
+            }
+            else if (serv.includes("CERTIDÃO DE PERMISSÃO DE USO")) {
+                textosExtras.push(`CERTIDÃO DE PERMISSÃO DE USO DA ${tipoSepul} N° ${sepul} ONDE SE ENCONTRAM OS RESTOS MORTAIS DE ${falecido} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`);
+            }
+            else if (serv === "CERTIDÃO") {
+                textosExtras.push(`EMISSÃO DE CERTIDÃO REFERENTE AO(A) FALECIDO(A) ${falecido} INUMADO NA ${tipoSepul} N° ${sepul} ${quadra} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`);
+            }
+            else if (serv === "PERMISSÃO DE USO") {
+                textosExtras.push(`PERMISSÃO DE USO DE 1 (UM) ${tipoSepul} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`);
+            }
+            else if (serv === "EXUMAÇÃO" && !textoPrincipal) {
+                textoPrincipal = `EXUMAÇÃO DO(A) FALECIDO(A) ${falecido} INUMADO(A) NO DIA ${dtSepul} NA ${tipoSepul} N° ${sepul} ${quadra} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`;
+            }
+            else if (serv === "SAÍDA DE OSSOS" && !textoPrincipal) {
+                textoPrincipal = `SAÍDA DE OSSOS DO(A) FALECIDO(A) ${falecido} DA ${tipoSepul} N° ${sepul} ${quadra} DO CEMITÉRIO MUNICIPAL ${cemOrigem} PARA O CEMITÉRIO ${cemDestino}`;
+            }
+            else if (serv === "RECOLHIMENTO" && !textoPrincipal) {
+                textoPrincipal = `RECOLHIMENTO DE RESTOS MORTAIS DO(A) FALECIDO(A) ${falecido} DA ${tipoSepul} N° ${sepul} ${quadra} DO CEMITÉRIO MUNICIPAL ${cemOrigem}`;
+            }
+            else if (serv === "ENTRADA DE OSSOS / CINZAS" && !textoPrincipal) {
+                textoPrincipal = `${serv} DO(A) FALECIDO(A) ${falecido} VINDAS DO CEMITÉRIO ${cemOrigem} PARA O CEMITÉRIO MUNICIPAL ${cemDestino !== '(CEMITÉRIO DE DESTINO)' ? cemDestino : '(CEMITÉRIO DESTINO)'}`;
+            }
+            else if (serv === "OUTROS") {
+                textosExtras.push(`DIVERSOS/OUTROS SERVIÇOS REFERENTE A ${falecido} NA ${tipoSepul} N° ${sepul} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`);
+            }
+            else {
+                if(!textoPrincipal) {
+                    textoPrincipal = `${serv} DO(A) FALECIDO(A) ${falecido} NA ${tipoSepul} N° ${sepul} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`;
+                } else {
+                    textosExtras.push(`${serv}`);
+                }
+            }
+        }
+    });
+
+    let textoFinal = "";
+    if (textoPrincipal) {
+        textoFinal = textoPrincipal;
+        if (textosExtras.length > 0) {
+            textoFinal += " E " + textosExtras.join(" E ");
+        }
+    } else if (textosExtras.length > 0) {
+        textoFinal = textosExtras.join(" E ");
+    } else {
+        let s_fmt = s.replace(/, /g, ' E '); 
+        textoFinal = `REFERENTE A ${s_fmt} DO(A) FALECIDO(A) ${falecido} NA ${tipoSepul} N° ${sepul} ${quadra} NO CEMITÉRIO MUNICIPAL ${cemOrigem}`;
+    }
+    
+    return textoFinal.replace(/\s+/g, ' ').trim() + ".";
+}
+
 // --- MODAL E LÓGICA EXCLUSIVA DA LIBERAÇÃO ---
 window.abrirLiberacao = function(id) {
     document.getElementById('form-liberacao').reset();
     getDB().collection("requerimentos_exumacao").doc(id).get().then(doc => {
         if(doc.exists) {
             const d = doc.data();
+            d.id = doc.id;
+            window.dadosLiberacaoAtual = d;
+
             document.getElementById('docIdLiberacao').value = doc.id;
-            if(d.processo) document.getElementById('processo').value = d.processo;
-            if(d.grm) document.getElementById('grm').value = d.grm;
+            if(d.processo) document.getElementById('processo_lib').value = d.processo;
+            if(d.grm) document.getElementById('grm_lib').value = d.grm;
             if(d.valor_pago) document.getElementById('valor_pago').value = d.valor_pago;
-            if(d.referente_a) document.getElementById('referente_a').value = d.referente_a;
+            
+            if(d.referente_a) {
+                document.getElementById('referente_a').value = d.referente_a;
+            } else {
+                document.getElementById('referente_a').value = window.gerarTextoReferenteA(d);
+            }
             
             safeDisplay('modal-liberacao', 'block');
         }
     });
 }
 
-window.fecharModalLiberacao = function() { safeDisplay('modal-liberacao', 'none'); }
+window.fecharModalLiberacao = function() { safeDisplay('modal-liberacao', 'none'); window.dadosLiberacaoAtual = null; }
 
-// SALVAR APENAS OS DADOS DE LIBERAÇÃO (COM AUDITORIA ISOLADA)
+// SALVAR APENAS OS DADOS DE LIBERAÇÃO
 const formLib = document.getElementById('form-liberacao');
 if(formLib) {
     formLib.onsubmit = (e) => {
@@ -669,8 +1224,8 @@ if(formLib) {
         const id = document.getElementById('docIdLiberacao').value;
         
         let dadosLiberacao = {
-            processo: document.getElementById('processo').value,
-            grm: document.getElementById('grm').value,
+            processo: document.getElementById('processo_lib').value,
+            grm: document.getElementById('grm_lib').value,
             valor_pago: document.getElementById('valor_pago').value,
             referente_a: document.getElementById('referente_a').value
         };
@@ -707,7 +1262,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sessao) { 
         usuarioLogado = JSON.parse(sessao); 
         safeDisplay('tela-bloqueio', 'none'); 
-        document.getElementById('user-display').innerText = usuarioLogado.nome;
+        
+        let avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(usuarioLogado.nome)}&background=random&color=fff&bold=true`;
+        document.getElementById('user-display').innerHTML = `
+            <div class="user-info" style="margin-right: 15px; text-align: left;">
+                <img src="${avatarUrl}" class="user-avatar" alt="Avatar" style="width: 36px; height: 36px; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="line-height: 1.2;">
+                    <div style="font-weight: 800; color: #3699ff; font-size: 13px; text-transform: uppercase;">${usuarioLogado.nome}</div>
+                    <div style="font-size: 10px; color: #888;">${usuarioLogado.email || 'Atendente'}</div>
+                </div>
+            </div>
+        `;
         
         if(fd && !fd.value) fd.value = pegarDataISO();
         carregarTabela(); 
@@ -727,6 +1292,8 @@ window.visualizarDocumentos = function(id) {
             
             if(d.assinatura_responsavel) assinaturaResponsavelImg = d.assinatura_responsavel;
             if(d.assinatura_atendente) assinaturaAtendenteImg = d.assinatura_atendente;
+            
+            let cemDisplay = d.cemiterio === 'OUTRO' ? d.cemiterio_outro : d.cemiterio;
 
             const resumoEl = document.getElementById('resumo-dados');
             if(resumoEl) {
@@ -736,7 +1303,7 @@ window.visualizarDocumentos = function(id) {
                         <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Requerente</span><br><strong style="font-size:14px;">${d.resp_nome ? d.resp_nome.toUpperCase() : '-'}</strong></div>
                         <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Falecido(a)</span><br><strong style="font-size:14px;">${d.nome_falecido ? d.nome_falecido.toUpperCase() : '-'}</strong></div>
                         
-                        <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Cemitério / Serviço</span><br><strong>${d.cemiterio ? d.cemiterio.toUpperCase() : '-'} (${d.servico_requerido ? d.servico_requerido.toUpperCase() : '-'})</strong></div>
+                        <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Cemitério / Serviço</span><br><strong>${cemDisplay ? cemDisplay.toUpperCase() : '-'} (${d.servico_requerido ? d.servico_requerido.toUpperCase() : '-'})</strong></div>
                         <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Localização Sepultura</span><br><strong>Nº ${d.sepul || '-'} / QD ${d.qd || '-'}</strong></div>
                         <div><span style="color:#888; font-size:10px; text-transform:uppercase; font-weight:bold;">Administrativo</span><br><strong style="color:var(--danger);">Proc: ${d.processo || '-'} / GRM: ${d.grm || '-'}</strong></div>
                         
@@ -750,7 +1317,7 @@ window.visualizarDocumentos = function(id) {
     });
 }
 
-// --- IMPRESSÃO DO REQUERIMENTO ---
+// --- IMPRESSÃO DO REQUERIMENTO COM FONTE AUMENTADA ---
 window.imprimirRequerimento = function() {
     if (!dadosAtendimentoAtual) return;
     const d = dadosAtendimentoAtual;
@@ -772,10 +1339,16 @@ window.imprimirRequerimento = function() {
         enderecoCompleto += ` - ${d.complemento.toUpperCase()}`;
     }
 
+    let telsList = d.telefone || '';
+    let tIndex = 2;
+    while(d['telefone'+tIndex]) { telsList += ' / ' + d['telefone'+tIndex]; tIndex++; }
+
+    let cemOrigem = d.cemiterio === 'OUTRO' ? d.cemiterio_outro : d.cemiterio;
+
     const html = `<html><head><title>Requerimento Exumação</title><style>
         @page { size: A4 portrait; margin: 15mm; }
         body { 
-            font-family: Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #000; position: relative; 
+            font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #000; position: relative; 
             -webkit-print-color-adjust: exact; print-color-adjust: exact; 
         }
         
@@ -790,19 +1363,19 @@ window.imprimirRequerimento = function() {
             pointer-events: none;
         }
 
-        .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px; position: relative;}
-        .header img.logo-print { height: 55px; }
+        .header { text-align: center; margin-bottom: 10px; border-bottom: 2px solid #333; padding-bottom: 5px; position: relative;}
+        .header img.logo-print { height: 50px; }
         .header-subtitle { font-size: 12px; font-weight: bold; margin-top: 5px; text-transform: uppercase; }
-        .doc-title { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
-        .section { margin-bottom: 15px; border: 1px solid #ccc; padding: 10px; border-radius: 4px; }
-        .section-title { font-weight: bold; font-size: 11px; background-color: #f0f0f0; padding: 4px 8px; margin: -10px -10px 10px -10px; border-bottom: 1px solid #ccc; border-radius: 4px 4px 0 0; text-transform: uppercase; color: #333; }
-        .row { display: flex; margin-bottom: 8px; gap: 15px; }
+        .doc-title { font-size: 17px; font-weight: bold; text-align: center; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .section { margin-bottom: 10px; border: 1px solid #ccc; padding: 8px; border-radius: 4px; }
+        .section-title { font-weight: bold; font-size: 12px; background-color: #f0f0f0; padding: 4px 8px; margin: -8px -8px 8px -8px; border-bottom: 1px solid #ccc; border-radius: 4px 4px 0 0; text-transform: uppercase; color: #333; }
+        .row { display: flex; margin-bottom: 6px; gap: 15px; }
         .field { display: flex; flex-direction: column; flex: 1; }
         .label { font-size: 10px; color: #666; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;}
-        .value { font-size: 13px; font-weight: bold; border-bottom: 1px solid #000; padding-top: 2px; padding-bottom: 2px; min-height: 16px;}
-        .chk-item { font-weight: bold; font-size: 13px; }
-        .footer-note { font-size: 10px; text-align: justify; margin-top: 20px; padding: 10px; border: 1px dashed #999; background-color: #f9f9f9; border-radius: 4px;}
-        .legal { font-size: 9px; text-align: center; margin-top: 20px; font-weight: bold; color: #444; }
+        .value { font-size: 14px; font-weight: bold; border-bottom: 1px solid #000; padding-top: 2px; padding-bottom: 2px; min-height: 16px;}
+        .chk-item { font-weight: bold; font-size: 14px; }
+        .footer-note { font-size: 11px; text-align: justify; margin-top: 15px; padding: 8px; border: 1px dashed #999; background-color: #f9f9f9; border-radius: 4px;}
+        .legal { font-size: 9px; text-align: center; margin-top: 15px; font-weight: bold; color: #444; }
         .box-protocolo { position: absolute; top: 0; right: 0; border: 2px solid #000; padding: 4px 8px; font-weight: bold; font-size: 12px; font-family: monospace; background: #fff; }
     </style></head><body>
         <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Bras%C3%A3o_de_Niter%C3%B3i%2C_RJ.svg" class="watermark">
@@ -828,7 +1401,7 @@ window.imprimirRequerimento = function() {
             <div class="row">
                 <div class="field"><span class="label">Bairro</span><span class="value">${d.bairro.toUpperCase()}</span></div>
                 <div class="field"><span class="label">Município</span><span class="value">${d.municipio.toUpperCase()}</span></div>
-                <div class="field"><span class="label">Telefone</span><span class="value">${d.telefone}</span></div>
+                <div class="field"><span class="label">Telefone(s)</span><span class="value">${telsList}</span></div>
             </div>
         </div>
 
@@ -837,7 +1410,7 @@ window.imprimirRequerimento = function() {
             <div class="row">
                 <div class="field" style="flex: 2;"><span class="label">Nome do(a) Falecido(a)</span><span class="value">${d.nome_falecido.toUpperCase()}</span></div>
                 <div class="field"><span class="label">Data de Sepultamento</span><span class="value">${formatarDataInversa(d.data_sepultamento)}</span></div>
-                <div class="field"><span class="label">Cemitério</span><span class="value">${d.cemiterio.toUpperCase()}</span></div>
+                <div class="field"><span class="label">Cemitério</span><span class="value">${cemOrigem ? cemOrigem.toUpperCase() : ''}</span></div>
             </div>
         </div>
 
@@ -861,10 +1434,10 @@ window.imprimirRequerimento = function() {
             <b>EM TEMPO:</b> Ao assinar este requerimento, declaro estar ciente que depois de passados <b>90 (noventa) dias</b> do deferimento desse procedimento administrativo, não havendo manifestação de minha parte para pagamento e realização do pleiteado, o processo será encerrado e arquivado, sendo considerado como desinteresse de minha parte; os restos mortais, quando for objeto do pedido, serão exumados e recolhidos ao ossuário geral. <br><br><b>OBS.: O comprovante de requerimento (protocolo) deverá ser apresentado no cemitério em até 24h após emissão.</b>
         </div>
 
-        <div style="margin-top:15px; font-size: 13px;">Nestes termos, peço deferimento.</div>
-        <div style="text-align:right; margin-top:5px; font-size: 13px;"><b>${dataTexto}</b></div>
+        <div style="margin-top:10px; font-size: 14px;">Nestes termos, peço deferimento.</div>
+        <div style="text-align:right; margin-top:5px; font-size: 14px;"><b>${dataTexto}</b></div>
 
-        <div style="display: flex; justify-content: space-around; margin-top: 40px; text-align: center;">
+        <div style="display: flex; justify-content: space-around; margin-top: 30px; text-align: center;">
             <div>
                 ${blocoAssinaturaAtendente}
                 <div style="border-top: 1px solid #000; padding-top: 5px; min-width: 250px;">
@@ -889,7 +1462,7 @@ window.imprimirRequerimento = function() {
     const w = window.open('','_blank'); w.document.write(html); w.document.close();
 }
 
-// --- IMPRESSÃO DA LIBERAÇÃO ---
+// --- IMPRESSÃO DA LIBERAÇÃO COM FONTE AUMENTADA ---
 window.imprimirLiberacao = function() {
     if (!dadosAtendimentoAtual) return;
     const d = dadosAtendimentoAtual;
@@ -903,13 +1476,19 @@ window.imprimirLiberacao = function() {
         enderecoCompleto += ` - ${d.complemento.toUpperCase()}`;
     }
 
+    let telsList = d.telefone || '';
+    let tIndex = 2;
+    while(d['telefone'+tIndex]) { telsList += ' / ' + d['telefone'+tIndex]; tIndex++; }
+    
+    let cemOrigem = d.cemiterio === 'OUTRO' ? d.cemiterio_outro : d.cemiterio;
+
     let blocoAssinaturaRequerente = assinaturaResponsavelImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaResponsavelImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
     let blocoAssinaturaAtendente = assinaturaAtendenteImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaAtendenteImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
 
     const html = `<html><head><title>Liberação Exumação</title><style>
         @page { size: A4 portrait; margin: 20mm; }
         body { 
-            font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #000; position: relative;
+            font-family: Arial, sans-serif; font-size: 14px; line-height: 1.4; color: #000; position: relative;
             -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
         
@@ -924,17 +1503,17 @@ window.imprimirLiberacao = function() {
             pointer-events: none;
         }
 
-        .header { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #333; padding-bottom: 10px; position: relative;}
-        .header img.logo-print { height: 55px; }
+        .header { text-align: center; margin-bottom: 10px; border-bottom: 2px solid #333; padding-bottom: 5px; position: relative;}
+        .header img.logo-print { height: 50px; }
         .header-subtitle { font-size: 12px; font-weight: bold; margin-top: 5px; text-transform: uppercase; }
-        .doc-title { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
-        .section { margin-bottom: 15px; border: 1px solid #ccc; padding: 10px; border-radius: 4px; }
-        .section-title { font-weight: bold; font-size: 11px; background-color: #f0f0f0; padding: 4px 8px; margin: -10px -10px 10px -10px; border-bottom: 1px solid #ccc; border-radius: 4px 4px 0 0; text-transform: uppercase; color: #333; }
-        .row { display: flex; margin-bottom: 8px; gap: 15px; }
+        .doc-title { font-size: 17px; font-weight: bold; text-align: center; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .section { margin-bottom: 10px; border: 1px solid #ccc; padding: 8px; border-radius: 4px; }
+        .section-title { font-weight: bold; font-size: 12px; background-color: #f0f0f0; padding: 4px 8px; margin: -8px -8px 8px -8px; border-bottom: 1px solid #ccc; border-radius: 4px 4px 0 0; text-transform: uppercase; color: #333; }
+        .row { display: flex; margin-bottom: 6px; gap: 15px; }
         .field { display: flex; flex-direction: column; flex: 1; }
         .label { font-size: 10px; color: #666; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;}
-        .value { font-size: 13px; font-weight: bold; border-bottom: 1px solid #000; padding-top: 2px; padding-bottom: 2px; min-height: 16px;}
-        .footer-note { font-size: 11px; text-align: justify; margin-top: 20px; padding: 10px; border: 1px dashed #999; background-color: #f9f9f9; border-radius: 4px; line-height: 1.6;}
+        .value { font-size: 14px; font-weight: bold; border-bottom: 1px solid #000; padding-top: 2px; padding-bottom: 2px; min-height: 16px;}
+        .footer-note { font-size: 11px; text-align: justify; margin-top: 15px; padding: 8px; border: 1px dashed #999; background-color: #f9f9f9; border-radius: 4px; line-height: 1.5;}
         .box-protocolo { position: absolute; top: 0; right: 0; border: 2px solid #000; padding: 4px 8px; font-weight: bold; font-size: 12px; font-family: monospace; background: #fff; }
     </style></head><body>
         <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Bras%C3%A3o_de_Niter%C3%B3i%2C_RJ.svg" class="watermark">
@@ -960,7 +1539,7 @@ window.imprimirLiberacao = function() {
             <div class="section-title">Dados do Requerente e Localização</div>
             <div class="row">
                 <div class="field" style="flex: 2;"><span class="label">Nome do Requerente</span><span class="value">${d.resp_nome.toUpperCase()}</span></div>
-                <div class="field"><span class="label">Cemitério Municipal</span><span class="value">${d.cemiterio.toUpperCase()}</span></div>
+                <div class="field"><span class="label">Cemitério Municipal</span><span class="value">${cemOrigem ? cemOrigem.toUpperCase() : ''}</span></div>
             </div>
             <div class="row">
                 <div class="field" style="flex: 2.5;"><span class="label">Endereço</span><span class="value">${enderecoCompleto}</span></div>
@@ -969,14 +1548,14 @@ window.imprimirLiberacao = function() {
             <div class="row">
                 <div class="field"><span class="label">Bairro</span><span class="value">${d.bairro.toUpperCase()}</span></div>
                 <div class="field"><span class="label">Município</span><span class="value">${d.municipio.toUpperCase()}</span></div>
-                <div class="field"><span class="label">Telefone</span><span class="value">${d.telefone}</span></div>
+                <div class="field"><span class="label">Telefone(s)</span><span class="value">${telsList}</span></div>
             </div>
         </div>
 
         <div class="section">
             <div class="section-title">Referente A</div>
             <div class="row">
-                <div class="field"><span class="value" style="border:none; text-align:justify; line-height: 1.6; text-transform: uppercase;">${d.referente_a ? d.referente_a.replace(/\n/g, '<br>') : '__________________________________________________________________________'}</span></div>
+                <div class="field"><span class="value" style="border:none; text-align:justify; line-height: 1.5; text-transform: uppercase;">${d.referente_a ? d.referente_a.replace(/\n/g, '<br>') : '__________________________________________________________________________'}</span></div>
             </div>
         </div>
 
@@ -986,9 +1565,9 @@ window.imprimirLiberacao = function() {
             <div style="text-align: center; text-decoration: underline;"><b>EXUMAÇÃO E ENTRADA/SAÍDA DE OSSOS SÃO FEITAS DE SEGUNDA A SEXTA DAS 8H ÀS 10H, EXCETO FERIADOS.</b></div>
         </div>
 
-        <div style="margin-top:20px; text-align:right; font-size: 13px;"><b>${dataTexto}</b></div>
+        <div style="margin-top:15px; text-align:right; font-size: 14px;"><b>${dataTexto}</b></div>
 
-        <div style="display: flex; justify-content: space-around; margin-top: 50px; text-align: center;">
+        <div style="display: flex; justify-content: space-around; margin-top: 40px; text-align: center;">
             <div>
                 ${blocoAssinaturaAtendente}
                 <div style="border-top: 1px solid #000; padding-top: 5px; min-width: 250px;">
@@ -1005,7 +1584,7 @@ window.imprimirLiberacao = function() {
             </div>
         </div>
         
-        <div style="text-align:center; font-size: 10px; color: #666; margin-top: 40px;">
+        <div style="text-align:center; font-size: 10px; color: #666; margin-top: 30px;">
             Rua General Castrioto, 407 - Barreto - Niterói - 24110-256 - Tel.: 3513-6157
         </div>
 
@@ -1034,6 +1613,10 @@ window.imprimirDeclaracao = function() {
     let enderecoCompleto = d.endereco ? d.endereco.toUpperCase() : '___________';
     if (d.numero) enderecoCompleto += `, Nº ${d.numero}`;
 
+    let telsList = d.telefone || '';
+    let tIndex = 2;
+    while(d['telefone'+tIndex]) { telsList += ' / ' + d['telefone'+tIndex]; tIndex++; }
+
     // Variáveis auxiliares para as declarações
     const cpf = d.cpf || "___________";
     const rg = d.rg || "___________";
@@ -1044,7 +1627,7 @@ window.imprimirDeclaracao = function() {
     const sepOrigem = d.sepul || "_____";
     const qdOrigem = d.qd || "_____";
     const tipoOrigem = d.tipo_sepultura ? d.tipo_sepultura.toUpperCase() : "___________";
-    const cemOrigem = d.cemiterio ? d.cemiterio.toUpperCase() : "___________";
+    const cemOrigem = d.cemiterio === 'OUTRO' ? (d.cemiterio_outro ? d.cemiterio_outro.toUpperCase() : '___________') : (d.cemiterio ? d.cemiterio.toUpperCase() : '___________');
     
     const cemDestino = d.cemiterio_destino ? d.cemiterio_destino.toUpperCase() : "___________";
     const destNro = d.destino_local_nro || "_____";
@@ -1158,7 +1741,7 @@ window.imprimirDeclaracao = function() {
             break;
     }
 
-    let textoIntro = `Eu, <b>${d.resp_nome ? d.resp_nome.toUpperCase() : '___________'}</b>, carteira de identidade nº <b>${rg}</b>, inscrito(a) sob o CPF nº <b>${cpf}</b>, residente à <b>${enderecoCompleto}</b>, bairro <b>${d.bairro ? d.bairro.toUpperCase() : '___________'}</b>, município <b>${d.municipio ? d.municipio.toUpperCase() : '___________'}</b>, contato telefônico <b>${d.telefone || '___________'}</b>, `;
+    let textoIntro = `Eu, <b>${d.resp_nome ? d.resp_nome.toUpperCase() : '___________'}</b>, carteira de identidade nº <b>${rg}</b>, inscrito(a) sob o CPF nº <b>${cpf}</b>, residente à <b>${enderecoCompleto}</b>, bairro <b>${d.bairro ? d.bairro.toUpperCase() : '___________'}</b>, município <b>${d.municipio ? d.municipio.toUpperCase() : '___________'}</b>, contato telefônico <b>${telsList || '___________'}</b>, `;
 
     if (tipoVal === "capacidade_nicho") {
         textoIntro = `Eu, <b>${d.resp_nome ? d.resp_nome.toUpperCase() : '___________'}</b>, inscrito(a) sob o CPF n° <b>${cpf}</b>, `;
@@ -1169,22 +1752,22 @@ window.imprimirDeclaracao = function() {
     }
 
     const html = `<html><head><title>${titulo_declaracao}</title><style>
-        @page { size: A4 portrait; margin: 20mm; }
-        body { font-family: Arial, sans-serif; font-size: 16px; line-height: 1.8; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .header { text-align: center; margin-bottom: 40px; }
-        .header img { height: 70px; margin-bottom: 10px; }
+        @page { size: A4 portrait; margin: 15mm; }
+        body { font-family: Arial, sans-serif; font-size: 16px; line-height: 1.6; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .header { text-align: center; margin-bottom: 25px; }
+        .header img { height: 60px; margin-bottom: 10px; }
         .header-title { font-weight: bold; font-size: 14px; margin-top: 5px; }
-        .doc-title { font-weight: bold; font-size: 18px; text-transform: uppercase; margin-top: 25px; text-decoration: underline; }
-        .content { text-align: justify; margin-top: 40px; }
-        .footer { margin-top: 80px; text-align: center; }
-        .legal { font-size: 10px; text-align: center; margin-top: 60px; font-weight: bold; line-height: 1.2;}
+        .doc-title { font-weight: bold; font-size: 20px; text-transform: uppercase; margin-top: 20px; text-decoration: underline; }
+        .content { text-align: justify; margin-top: 30px; }
+        .footer { margin-top: 50px; text-align: center; }
+        .legal { font-size: 11px; text-align: center; margin-top: 40px; font-weight: bold; line-height: 1.2;}
     </style></head><body>
         <div class="header">
             <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo Prefeitura">
             <div class="header-title">SECRETARIA DE MOBILIDADE E INFRAESTRUTURA - SEMOBI</div>
             <div class="header-title">SUBSECRETARIA DE INFRAESTRUTURA - SSINFRA</div>
             <div class="doc-title">DECLARAÇÃO</div>
-            <div style="font-weight: bold; font-size: 16px; margin-top: 10px;">${titulo_declaracao}</div>
+            <div style="font-weight: bold; font-size: 17px; margin-top: 10px;">${titulo_declaracao}</div>
         </div>
         
         <div class="content">
@@ -1193,7 +1776,7 @@ window.imprimirDeclaracao = function() {
 
         <div class="footer">
             <div>Niterói, ${dataTexto}</div>
-            <div style="margin-top: 60px; display: flex; flex-direction: column; align-items: center;">
+            <div style="margin-top: 50px; display: flex; flex-direction: column; align-items: center;">
                 <div style="width: 350px; text-align: center;">
                     ${blocoAssinaturaRequerente}
                     <div style="border-top: 1px solid #000; padding-top: 5px; font-weight: bold;">

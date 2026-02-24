@@ -21,18 +21,47 @@
         .btn-sign-fam { background-color: #663399; }
         .btn-sign-func { background-color: #8e44ad; }
 
-        /* CSS DO PAINEL ADMIN */
+        /* CSS DO PAINEL ADMIN E ESTATÍSTICAS */
         .btn-admin { background-color: #34495e; }
         .tab-header { display: flex; border-bottom: 1px solid #ddd; background-color: #f8f9fa; }
         .tab-btn { padding: 15px 25px; border: none; background: none; cursor: pointer; font-weight: 600; color: #666; border-bottom: 3px solid transparent; }
         .tab-btn.active { color: var(--primary-color); border-bottom: 3px solid var(--primary-color); background-color: white; }
         .tab-pane { display: none; padding: 20px; }
         .tab-pane.active { display: block; }
-        .lista-simples { list-style: none; padding: 0; margin: 0; }
-        .lista-simples li { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;}
         .table-logs { width: 100%; font-size: 12px; border-collapse: collapse; }
         .table-logs th, .table-logs td { border-bottom: 1px solid #eee; padding: 8px 10px; text-align: left; }
         .btn-imprimir { background-color: white; color: var(--text-dark); border: 1px solid #ebedf3; border-radius: 6px; padding: 8px 15px; font-weight: 600; cursor: pointer; }
+
+        /* CSS DA TABELA DE USUÁRIOS E FORMULÁRIO (ADMIN) */
+        .admin-user-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; text-align: left; background: #fff; }
+        .admin-user-table th { padding: 12px 15px; color: #5c677d; font-weight: 700; border-bottom: 2px solid #edf2f9; }
+        .admin-user-table td { padding: 15px; vertical-align: middle; border-bottom: 1px solid #edf2f9; }
+        .admin-user-table tr:hover td { background: #f8fafc; }
+        .user-info { display: flex; align-items: center; gap: 12px; }
+        .user-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .action-group { display: flex; gap: 8px; justify-content: flex-end; }
+        .btn-action-square { width: 34px; height: 34px; border-radius: 8px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .btn-action-square:hover { transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
+        .btn-action-view { background: #eef2fa; color: #6b7a90; }
+        .btn-action-edit { background: #fff4e5; color: #f39c12; }
+        .btn-action-del { background: #fce8e6; color: #e74c3c; }
+        .senha-oculta { letter-spacing: 2px; font-size: 16px; color: #888; margin-right: 10px; font-weight: bold; width: 60px; display: inline-block; }
+        
+        .admin-input-modern { border: 1px solid #dce1e7; padding: 10px 12px; border-radius: 6px; background: #fff; width: 100%; box-sizing: border-box; outline: none; font-family: inherit; font-size: 13px; color: #555; transition: border-color 0.2s; }
+        .admin-input-modern:focus { border-color: #3699ff; }
+        .admin-input-modern::placeholder { color: #aab2bd; }
+        .admin-btn-modern { background: #3699ff; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s; display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; }
+        .admin-btn-modern:hover { background: #2a88e5; }
+        .admin-label { font-size: 10px; font-weight: bold; margin-bottom: 4px; display: block; text-transform: uppercase; }
+
+        /* DASHBOARD MODERNIZATION */
+        .dashboard-grid { display: flex; flex-wrap: wrap; gap: 20px; }
+        .card-chart { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #edf2f9; flex: 1 1 300px; display: flex; flex-direction: column; }
+        .card-chart.large { flex: 2 1 500px; }
+        .kpi-card { background: linear-gradient(135deg, #3699ff, #2a88e5); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(54,153,255,0.25); flex: 1; min-width: 200px; display: flex; flex-direction: column; justify-content: center; margin-bottom: 20px;}
+        .kpi-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; margin: 0; font-weight: 700;}
+        .kpi-value { font-size: 32px; font-weight: 800; margin: 5px 0 0 0; }
+        .chart-wrapper { position: relative; height: 300px; width: 100%; flex-grow: 1; }
 
         /* CSS DO CALENDÁRIO TOPO */
         .topo-content { display: flex; flex-direction: column; justify-content: center; }
@@ -75,8 +104,8 @@
                 </div>
                 <div class="topo-box search-box"><input type="text" id="input-busca" placeholder="Buscar Nome, CPF, Protocolo..."><button onclick="realizarBusca()" class="btn-search" title="Pesquisar">🔍</button></div>
             </div>
-            <div class="user-controls">
-                <span id="user-display"></span>
+            <div class="user-controls" style="display: flex; align-items: center;">
+                <div id="user-display" style="display: flex; align-items: center;"></div>
                 <button onclick="abrirAdmin()" class="btn-header btn-admin" title="Painel Administrativo">⚙️ Admin</button>
                 <button onclick="fazerLogout()" class="btn-header btn-exit" title="Sair">🚪 Sair</button>
             </div>
@@ -122,8 +151,30 @@
                     
                     <div class="section-title">Dados do Requerente</div>
                     <div class="input-group span-2"><label>Nome do Requerente</label><input type="text" id="resp_nome" required></div>
-                    <div class="input-group span-1"><label>Telefone</label><input type="text" id="telefone" required></div>
-                    <div class="input-group span-1"><label>Grau Parentesco</label><input type="text" id="parentesco" required></div>
+                    
+                    <div class="input-group span-1" id="box-telefones">
+                        <label style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            Telefone(s) 
+                            <span style="color:#3699ff; cursor:pointer; font-size:10px; font-weight:bold;" onclick="addTelefone()" title="Adicionar outro número">➕ NOVO</span>
+                        </label>
+                        <input type="text" id="telefone" placeholder="(00) 00000-0000" required oninput="mascaraTelefone(this)" maxlength="15">
+                    </div>
+                    
+                    <div class="input-group span-1">
+                        <label>Grau Parentesco</label>
+                        <input type="text" id="parentesco" list="lista-parentescos" required autocomplete="off">
+                        <datalist id="lista-parentescos">
+                            <option value="Cônjuge"></option>
+                            <option value="Filho(a)"></option>
+                            <option value="Pai / Mãe"></option>
+                            <option value="Irmão / Irmã"></option>
+                            <option value="Neto(a)"></option>
+                            <option value="Sobrinho(a)"></option>
+                            <option value="Tio(a)"></option>
+                            <option value="Primo(a)"></option>
+                            <option value="Companheiro(a)"></option>
+                        </datalist>
+                    </div>
                     
                     <div class="input-group span-1"><label>RG</label><input type="text" id="rg" placeholder="Identidade"></div>
                     
@@ -148,20 +199,31 @@
                     <div class="section-title">Dados do Falecido(a) e Localização</div>
                     <div class="input-group span-2"><label>Nome do(a) Falecido(a)</label><input type="text" id="nome_falecido" required></div>
                     <div class="input-group span-1"><label>Data Sepultamento</label><input type="date" id="data_sepultamento"></div>
-                    <div class="input-group span-1"><label>Cemitério (Origem)</label>
-                        <select id="cemiterio" required>
+                    <div class="input-group span-1">
+                        <label>Cemitério (Origem)</label>
+                        <select id="cemiterio" required onchange="window.toggleCemiterioOutro()">
                             <option value="MARUÍ">MARUÍ</option>
                             <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
                             <option value="ITAIPU">ITAIPU</option>
+                            <option value="OUTRO">OUTRO</option>
                         </select>
+                        <input type="text" id="cemiterio_outro" placeholder="Especifique o cemitério..." style="display:none; margin-top:5px; border-color:var(--primary-color);">
                     </div>
 
-                    <div class="input-group span-2"><label>Serviço Requerido</label>
-                        <select id="servico_requerido" required>
+                    <div class="section-title">Dados Administrativos E-CIGA / GRM</div>
+                    <div class="input-group span-2"><label>Processo E-CIGA/SEI</label><input type="text" id="processo" placeholder="Ex: 99/9999/9999"></div>
+                    <div class="input-group span-2"><label>Nº Guia GRM</label><input type="text" id="grm" placeholder="Ex: 12345678"></div>
+
+                    <div class="section-title">Serviços e Localização (Requerimento)</div>
+                    <div class="input-group span-4">
+                        <label style="display:flex; justify-content:space-between; align-items:center; width:100%;">Serviço Requerido <span style="font-size:9px; color:#888;">(Segure CTRL p/ vários)</span></label>
+                        <select id="servico_requerido" required multiple size="5" style="height: auto; min-height: 90px; padding: 5px;">
                             <option value="Exumação">Exumação</option>
                             <option value="Saída de ossos">Saída de ossos</option>
                             <option value="Entrada de ossos / cinzas">Entrada de ossos / cinzas</option>
                             <option value="Permissão de uso">Permissão de uso</option>
+                            <option value="Certidão de permissão de uso">Certidão de permissão de uso</option>
+                            <option value="Licença com ônus para colocação de lapide">Licença com ônus para colocação de lapide</option>
                             <option value="Recolhimento">Recolhimento</option>
                             <option value="Permuta">Permuta</option>
                             <option value="Certidão">Certidão</option>
@@ -169,7 +231,6 @@
                             <option value="Outros">Outros</option>
                         </select>
                     </div>
-                    <div class="input-group span-2"><label>Cemitério de Destino (Transferências)</label><input type="text" id="cemiterio_destino" placeholder="Para onde vai? Ex: Cemitério de São Gonçalo"></div>
 
                     <div class="section-title">Sepultura de Origem</div>
                     <div class="input-group span-2"><label>Tipo de Sepultura</label>
@@ -193,10 +254,27 @@
                     <div class="input-group span-3"><label>Serviço de Reforma (Se houver)</label><input type="text" id="servico_reforma" placeholder="Ex: Colocação de Mármore, Revestimento"></div>
 
                     <div class="section-title">Destino (Apenas para Declarações de Recolhimento/Transferência)</div>
-                    <div class="input-group span-1"><label>Nº Destino</label><input type="text" id="destino_local_nro" placeholder="Nº Nicho/Perpétua"></div>
+                    <div class="input-group span-2"><label>Cemitério de Destino</label><input type="text" id="cemiterio_destino" placeholder="Ex: Cemitério de São Gonçalo"></div>
+                    <div class="input-group span-2"><label>Tipo de Sepultura (Destino)</label>
+                        <select id="destino_tipo_sepultura">
+                            <option value="">Selecione...</option>
+                            <option value="Carneiro de adulto">Carneiro de adulto</option>
+                            <option value="Carneiro de anjo">Carneiro de anjo</option>
+                            <option value="Gaveta de adulto">Gaveta de adulto</option>
+                            <option value="Gaveta de anjo">Gaveta de anjo</option>
+                            <option value="Cova rasa de adulto">Cova rasa de adulto</option>
+                            <option value="Cova rasa de anjo">Cova rasa de anjo</option>
+                            <option value="Nicho">Nicho</option>
+                            <option value="Nicho perpétuo">Nicho perpétuo</option>
+                            <option value="Sep perpétua">Sep perpétua</option>
+                        </select>
+                    </div>
+                    <div class="input-group span-1"><label>Nº Destino / Sepultura</label><input type="text" id="destino_local_nro" placeholder="Nº Nicho/Perpétua"></div>
+                    <div class="input-group span-1"><label>Quadra (Destino)</label><input type="text" id="destino_qd" placeholder="Ex: A, B..."></div>
                     <div class="input-group span-1"><label>Livro Nº</label><input type="text" id="destino_livro"></div>
                     <div class="input-group span-1"><label>Fls Nº</label><input type="text" id="destino_fls"></div>
-                    <div class="input-group span-1"><label>Proprietário / Nome de</label><input type="text" id="destino_proprietario"></div>
+                    
+                    <div class="input-group span-4"><label>Proprietário / Nome de (Destino)</label><input type="text" id="destino_proprietario"></div>
 
                     <div class="input-group span-4" style="margin-top: 10px;"><label>Assunto / Observações</label><input type="text" id="assunto" placeholder="Detalhes adicionais do requerimento"></div>
                 </div>
@@ -221,10 +299,15 @@
                 <div class="form-grid" style="padding: 30px;">
                     <p class="span-4" style="font-size: 11px; color: #666; margin-top:0;">Estes dados ficarão vinculados ao requerimento atual e sairão impressos no formulário de Liberação.</p>
                     
-                    <div class="input-group span-2"><label>Processo Nº</label><input type="text" id="processo" required></div>
-                    <div class="input-group span-2"><label>GRM Nº</label><input type="text" id="grm" required></div>
+                    <div class="input-group span-2"><label>Processo Nº</label><input type="text" id="processo_lib" required></div>
+                    <div class="input-group span-2"><label>GRM Nº</label><input type="text" id="grm_lib" required></div>
                     <div class="input-group span-4"><label>Quantia Paga (R$)</label><input type="text" id="valor_pago" placeholder="Ex: 45,72 (Quarenta e cinco reais e setenta...)" required></div>
-                    <div class="input-group span-4"><label>Texto "Referente a:"</label>
+                    
+                    <div class="input-group span-4">
+                        <label style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            Texto "Referente a:"
+                            <span style="color:#3699ff; cursor:pointer; font-size:10px; font-weight:bold;" onclick="preencherReferenteAutomatico()" title="Auto-completar com base no Requerimento">✨ GERAR AUTOMÁTICO</span>
+                        </label>
                         <textarea id="referente_a" rows="4" placeholder="Ex: EXUMAÇÃO E SAÍDA DE OSSOS DA GAVETA DE ADULTO N°383 ONDE FOI INUMADO..." required></textarea>
                     </div>
                 </div>
@@ -280,6 +363,7 @@
                     <button type="button" class="btn-modal btn-sign-func" onclick="abrirModalAssinatura('atendente')">✍️ Assinar Equipe</button>
                     <button type="button" class="btn-modal btn-print-req" onclick="imprimirRequerimento()">📄 Form. Requerimento</button>
                     <button type="button" class="btn-modal btn-print-lib" onclick="imprimirLiberacao()">📄 Form. Liberação</button>
+                    <button type="button" class="btn-modal" style="background-color: #25D366; color: white;" onclick="window.enviarWhatsApp()">📱 WhatsApp</button>
                     <button type="button" class="btn-modal" style="background-color: #27ae60; color: white;" onclick="abrirModalGRM()">💸 Emitir GRM</button>
                 </div>
             </div>
@@ -321,38 +405,162 @@
             <div class="modal-header"><h3>Painel Administrativo</h3><span class="close" onclick="fecharModalAdmin()">×</span></div>
             <div class="tab-header">
                 <button class="tab-btn active" onclick="abrirAba('tab-equipe')">👥 Equipe</button>
+                <button class="tab-btn" onclick="abrirAba('tab-contribuintes')">📇 Contribuintes</button>
                 <button class="tab-btn" onclick="abrirAba('tab-stats')">📊 Estatísticas (Serviços)</button>
                 <button class="tab-btn" onclick="abrirAba('tab-logs')">🕵️ Auditoria</button>
             </div>
             <div class="tab-content-area" style="flex-grow: 1; overflow-y: auto; padding: 20px;">
                 
                 <div id="tab-equipe" class="tab-pane active">
-                    <h4>Gerenciar Usuários</h4>
-                    <div id="box-novo-usuario" style="display:flex; flex-direction: column; gap:10px; margin-bottom:20px; background: #f9f9f9; padding:15px; border-radius:8px;">
-                        <strong style="color:var(--primary-color);">Novo Usuário:</strong>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px;">
-                            <input type="text" id="novo-nome" placeholder="Nome Completo" style="border: 1px solid #ccc; padding: 8px;">
-                            <input type="text" id="novo-login" placeholder="Login" style="border: 1px solid #ccc; padding: 8px;">
-                            <input type="email" id="novo-email" placeholder="E-mail" style="border: 1px solid #ccc; padding: 8px;">
-                            <input type="password" id="nova-senha" placeholder="Senha" style="border: 1px solid #ccc; padding: 8px;">
-                            <button onclick="adicionarFuncionario()" class="btn-novo" style="padding: 10px 20px;">+</button>
+                    
+                    <div id="box-novo-usuario" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #edf2f9;">
+                        <strong style="color: #3699ff; display: block; margin-bottom: 15px; font-size: 14px;">Novo Usuário:</strong>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <label class="admin-label" style="color: #3699ff;">Nome Completo</label>
+                                <input type="text" id="novo-nome" class="admin-input-modern" placeholder="Ex: João Silva">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #3699ff;">Login / WhatsApp</label>
+                                <input type="text" id="novo-login" class="admin-input-modern" placeholder="Ex: joao.silva">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #3699ff;">E-mail</label>
+                                <input type="email" id="novo-email" class="admin-input-modern" placeholder="Ex: joao@email.com">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                            <div style="grid-column: span 2;">
+                                <label class="admin-label" style="color: #3699ff;">Senha</label>
+                                <input type="password" id="nova-senha" class="admin-input-modern" placeholder="Senha segura">
+                            </div>
+                            <div style="display: flex; align-items: flex-end;">
+                                <button onclick="adicionarFuncionario()" class="admin-btn-modern" style="width: 100%; height: 38px;">+ Adicionar Usuário</button>
+                            </div>
                         </div>
                     </div>
-                    <div id="div-editar-usuario" class="hidden" style="display:flex; flex-direction: column; gap:10px; margin-bottom:20px; background: #fff3cd; padding:15px; border-radius:8px; border:1px solid #ffeeba;">
-                        <strong style="color:#856404;">✏️ Editando Usuário:</strong>
+
+                    <div id="div-editar-usuario" class="hidden" style="background: #fffaf0; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffeeba;">
+                        <strong style="color: #856404; display: block; margin-bottom: 15px; font-size: 14px;">✏️ Editando Usuário:</strong>
                         <input type="hidden" id="edit-id">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px;">
-                            <input type="text" id="edit-nome" placeholder="Nome e Sobrenome" style="border: 1px solid #ccc; padding: 8px;">
-                            <input type="text" id="edit-login" placeholder="Login" disabled style="background:#e9ecef; cursor:not-allowed; border: 1px solid #ccc; padding: 8px;">
-                            <input type="email" id="edit-email" placeholder="E-mail" style="border: 1px solid #ccc; padding: 8px;">
-                            <input type="text" id="edit-senha" placeholder="Nova Senha" style="border: 1px solid #ccc; padding: 8px;">
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Nome Completo</label>
+                                <input type="text" id="edit-nome" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Nome Completo">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Login (Inalterável)</label>
+                                <input type="text" id="edit-login" class="admin-input-modern" style="border-color:#e5d8b3; background:#f9f6ef; cursor:not-allowed;" placeholder="Login" disabled>
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">E-mail</label>
+                                <input type="email" id="edit-email" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="E-mail">
+                            </div>
                         </div>
-                        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:5px;">
-                            <button onclick="cancelarEdicao()" class="btn-modal btn-cancelar">Cancelar</button>
-                            <button onclick="salvarEdicaoUsuario()" class="btn-modal btn-salvar">Salvar Alterações</button>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+                            <div style="grid-column: span 2;">
+                                <label class="admin-label" style="color: #856404;">Nova Senha</label>
+                                <input type="text" id="edit-senha" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Nova Senha">
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                                <button onclick="cancelarEdicao()" class="btn-modal btn-cancelar" style="flex: 1; padding: 10px 20px; border-radius: 6px; margin: 0; height: 38px;">Cancelar</button>
+                                <button onclick="salvarEdicaoUsuario()" class="btn-modal btn-salvar" style="flex: 1; padding: 10px 20px; border-radius: 6px; margin: 0; height: 38px;">Salvar</button>
+                            </div>
                         </div>
                     </div>
-                    <ul id="lista-equipe" class="lista-simples"></ul>
+                    
+                    <div style="overflow-x: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+                        <table class="admin-user-table">
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>Login / Contato</th>
+                                    <th>Senha</th>
+                                    <th style="text-align: right;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-equipe"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-contribuintes" class="tab-pane">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 15px;">
+                        <h4 style="margin: 0; color: #5c677d;">Buscar Contribuintes</h4>
+                        <div style="display:flex; gap: 10px; width: 50%;">
+                            <input type="text" id="busca-contribuinte-admin" class="admin-input-modern" placeholder="Buscar Nome, CPF, RG ou Telefone..." onkeypress="if(event.key==='Enter') window.buscarContribuintesAdmin()">
+                            <button onclick="window.buscarContribuintesAdmin()" class="btn-novo" style="padding: 0 15px;">🔍 Buscar</button>
+                        </div>
+                    </div>
+
+                    <div id="div-editar-contribuinte" class="hidden" style="background: #fffaf0; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffeeba;">
+                        <strong style="color: #856404; display: block; margin-bottom: 15px; font-size: 14px;">✏️ Editando Dados do Contribuinte:</strong>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Nome Completo</label>
+                                <input type="text" id="edit-cont-nome" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Nome Completo">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">CPF</label>
+                                <input type="text" id="edit-cont-cpf" class="admin-input-modern" style="border-color:#e5d8b3; background:#f9f6ef; cursor:not-allowed;" placeholder="CPF" disabled>
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">RG</label>
+                                <input type="text" id="edit-cont-rg" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="RG">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Telefone</label>
+                                <input type="text" id="edit-cont-tel" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Telefone">
+                            </div>
+                            
+                            <div>
+                                <label class="admin-label" style="color: #856404;">CEP</label>
+                                <input type="text" id="edit-cont-cep" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="CEP">
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label class="admin-label" style="color: #856404;">Endereço</label>
+                                <input type="text" id="edit-cont-end" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Endereço">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Número</label>
+                                <input type="text" id="edit-cont-num" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Número">
+                            </div>
+                            
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Complemento</label>
+                                <input type="text" id="edit-cont-comp" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Complemento">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Bairro</label>
+                                <input type="text" id="edit-cont-bairro" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Bairro">
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label class="admin-label" style="color: #856404;">Município</label>
+                                <input type="text" id="edit-cont-mun" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Município">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 15px;">
+                            <button onclick="window.cancelarEdicaoContribuinte()" class="btn-modal btn-cancelar" style="padding: 10px 20px; border-radius: 6px; margin: 0;">Cancelar</button>
+                            <button onclick="window.salvarEdicaoContribuinte()" class="btn-modal btn-salvar" style="padding: 10px 20px; border-radius: 6px; margin: 0;">Salvar Atualização Global</button>
+                        </div>
+                    </div>
+
+                    <div style="overflow-x: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+                        <table class="admin-user-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>CPF / RG</th>
+                                    <th>Contato</th>
+                                    <th>Endereço</th>
+                                    <th style="text-align: right;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-contribuintes">
+                                <tr><td colspan="5" style="text-align:center; padding: 20px;">Use a busca acima para encontrar contribuintes cadastrados.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <div id="tab-stats" class="tab-pane">
@@ -364,10 +572,22 @@
                         <button onclick="baixarRelatorioCompleto()" class="btn-novo" style="background-color: #1e3a8a;">📊 Baixar Base Completa</button>
                         <button onclick="baixarExcel()" class="btn-novo" style="background-color: #27ae60;">📥 Excel (Visual)</button>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 30px;">
-                        <div class="grafico-container" style="height: 350px;">
-                            <h5 style="text-align:center; margin-bottom:10px;">Serviços Mais Realizados</h5>
-                            <canvas id="grafico-servicos"></canvas>
+                    
+                    <div class="dashboard-grid">
+                        <div class="kpi-card">
+                            <h4 class="kpi-title">Total de Requerimentos</h4>
+                            <p id="kpi-total" class="kpi-value">0</p>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid" style="margin-top: 20px;">
+                        <div class="card-chart large">
+                            <h5 style="margin-top:0; margin-bottom:15px; color:#555; font-size:14px;">Serviços Mais Realizados</h5>
+                            <div class="chart-wrapper"><canvas id="grafico-servicos"></canvas></div>
+                        </div>
+                        <div class="card-chart">
+                            <h5 style="margin-top:0; margin-bottom:15px; color:#555; font-size:14px;">Divisão por Cemitério</h5>
+                            <div class="chart-wrapper"><canvas id="grafico-cemiterios"></canvas></div>
                         </div>
                     </div>
                 </div>
