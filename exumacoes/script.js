@@ -1501,12 +1501,15 @@ window.imprimirRequerimento = function() {
         .chk-item { font-weight: bold; font-size: 14px; }
         .footer-note { font-size: 11px; text-align: justify; margin-top: 15px; padding: 8px; border: 1px dashed #999; background-color: #f9f9f9; border-radius: 4px;}
         .legal { font-size: 9px; text-align: center; margin-top: 15px; font-weight: bold; color: #444; }
-        .box-protocolo { position: absolute; top: 0; right: 0; border: 2px solid #000; padding: 4px 8px; font-weight: bold; font-size: 12px; font-family: sans-serif; background: #fff; }
+        .box-protocolo { position: absolute; top: 0; right: 0; border: 2px solid #000; padding: 4px 8px; font-weight: bold; font-size: 12px; font-family: sans-serif; background: #fff; text-align: left; }
     </style></head><body>
         <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Bras%C3%A3o_de_Niter%C3%B3i%2C_RJ.svg" class="watermark">
         
         <div class="header">
-            <div class="box-protocolo">PROTOCOLO: ${d.protocolo || 'N/A'}</div>
+            <div class="box-protocolo">
+                PROTOCOLO: ${d.protocolo || 'N/A'}
+                ${d.processo ? `<br>PROCESSO: ${d.processo}` : ''}
+            </div>
             <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" class="logo-print">
             <div class="header-subtitle">Subsecretaria de Infraestrutura - SSINF<br>Coordenação dos Cemitérios de Niterói</div>
         </div>
