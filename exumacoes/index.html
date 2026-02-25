@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
+        .tab-btn.active { background-color: #0056b3 !important; color: white !important; border-bottom: 3px solid #003d80; font-weight: bold; }
         .modal-footer-custom { display: flex; justify-content: center; align-items: center; padding-top: 15px; border-top: 1px solid #eee; flex-wrap: wrap; gap: 8px; }
         .modal-footer-custom button { padding: 8px 12px; font-size: 13px; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px; color: white; font-weight: 500; flex-grow: 1; justify-content: center; max-width: 180px; min-width: 120px; }
         .btn-print-req { background-color: #e67e22; }
@@ -21,12 +22,14 @@
         .btn-sign-fam { background-color: #663399; }
         .btn-sign-func { background-color: #8e44ad; }
 
-        /* CSS DO PAINEL ADMIN - ABAS CORRIGIDAS E DISTRIBUÍDAS */
+        /* CSS DO PAINEL ADMIN - ABAS MODERNAS CORRIGIDO */
         .btn-admin { background-color: #34495e; }
-        .tab-header { display: flex; border-bottom: 2px solid #ebedf3; background-color: #fcfcfc; width: 100%; box-sizing: border-box; }
-        .tab-btn { flex: 1; padding: 15px 5px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #5c677d; border-bottom: 3px solid transparent; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; font-size: 13px; outline: none; }
+        .tab-header { display: flex; border-bottom: 2px solid #ebedf3; background-color: #fcfcfc; overflow-x: auto; margin-bottom: 0; }
+        .tab-header::-webkit-scrollbar { height: 4px; }
+        .tab-header::-webkit-scrollbar-thumb { background: #dce1e7; border-radius: 4px; }
+        .tab-btn { padding: 16px 20px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #5c677d; border-bottom: 3px solid transparent; display: flex; align-items: center; gap: 8px; transition: 0.2s; white-space: nowrap; font-size: 13px; margin-bottom: -2px; flex: 0 0 auto; }
         .tab-btn:hover { background-color: #f0f4f8; color: #0056b3; }
-        .tab-btn.active { background-color: #ffffff !important; color: #3699ff !important; border-bottom: 3px solid #3699ff !important; }
+        .tab-btn.active { background-color: #0056b3 !important; color: white !important; border-bottom: 3px solid #3699ff !important; }
         .tab-pane { display: none; padding: 25px 20px; }
         .tab-pane.active { display: block; }
         
@@ -55,6 +58,14 @@
         .admin-btn-modern { background: #3699ff; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s; display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; }
         .admin-btn-modern:hover { background: #2a88e5; }
         .admin-label { font-size: 10px; font-weight: bold; margin-bottom: 4px; display: block; text-transform: uppercase; }
+
+        /* NOVOS ESTILOS PARA A TABELA PRINCIPAL (BADGES) */
+        .badge { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-block; margin-right: 4px; margin-bottom: 4px; letter-spacing: 0.3px; }
+        .badge-blue { background: #e1f0ff; color: #0069d9; border: 1px solid #cce5ff; }
+        .text-icon { display: flex; align-items: center; gap: 5px; }
+        .text-icon-sm { font-size: 11px; color: #888; display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+        .cemiterio-tag { color: #8e44ad; font-weight: 700; background: #f3e5f5; padding: 3px 8px; border-radius: 4px; font-size: 12px; display: inline-block;}
+        .td-destaque { color: #333; font-weight: 600; }
 
         /* DASHBOARD MODERNIZATION */
         .dashboard-grid { display: flex; flex-wrap: wrap; gap: 20px; }
@@ -124,11 +135,11 @@
             <table>
                 <thead>
                     <tr>
-                        <th style="min-width: 200px;">Requerente / Contato</th>
+                        <th style="min-width: 250px;">Requerente / Contato</th>
                         <th style="min-width: 200px;">Falecido(a)</th>
                         <th>Cemitério</th>
-                        <th>Serviço Requerido</th>
-                        <th style="min-width: 140px;">Protocolo / Processo</th>
+                        <th style="min-width: 200px;">Serviço Requerido</th>
+                        <th style="min-width: 160px;">Protocolo / Processo</th>
                         <th>Data Registro</th>
                         <th style="text-align: right; min-width: 170px;">Ações</th>
                     </tr>
