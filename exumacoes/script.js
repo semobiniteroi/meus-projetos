@@ -1,1496 +1,549 @@
-// --- 1. CONFIGURAÇÃO E INICIALIZAÇÃO ---
-const firebaseConfig = {
-  apiKey: "AIzaSyB6pkQZNuLiYidKqstJdMXRl2OYW4JWmfs",
-  authDomain: "funeraria-niteroi.firebaseapp.com",
-  projectId: "funeraria-niteroi",
-  storageBucket: "funeraria-niteroi.firebasestorage.app",
-  messagingSenderId: "232673521828",
-  appId: "1:232673521828:web:f25a77f27ba1924cb77631"
+// --- CONFIGURAÇÃO E INICIALIZAÇÃO FIREBASE ---
+const firebaseConfig = { apiKey: "AIzaSyB6pkQZNuLiYidKqstJdMXRl2OYW4JWmfs", authDomain: "funeraria-niteroi.firebaseapp.com", projectId: "funeraria-niteroi", storageBucket: "funeraria-niteroi.firebasestorage.app", messagingSenderId: "232673521828", appId: "1:232673521828:web:f25a77f27ba1924cb77631" };
+let db = null, unsubscribe = null, equipeUnsubscribe = null, logsUnsubscribe = null, chartInstances = {}, dadosEstatisticasExportacao = [], usuarioLogado = null, dadosAtendimentoAtual = null;
+window.dadosLiberacaoAtual = null; window.telCount = 1; window.contribuintesMap = {};
+let signaturePad = null, isDrawing = false, assinaturaResponsavelImg = null, assinaturaAtendenteImg = null, tipoAssinaturaAtual = ''; 
+
+try { if (typeof firebase !== 'undefined') { firebase.initializeApp(firebaseConfig); db = firebase.firestore(); } } catch (e) { console.error("Erro Firebase:", e); }
+function getDB() { if (!db && typeof firebase !== 'undefined') { try { firebase.initializeApp(firebaseConfig); db = firebase.firestore(); } catch(e) { if(firebase.apps.length) db = firebase.firestore(); } } return db; }
+
+// --- HELPERS (Atalhos de Código) ---
+const _el = id => document.getElementById(id);
+const _val = id => _el(id) ? _el(id).value.trim() : '';
+const _setVal = (id, v) => { if(_el(id)) _el(id).value = v || ''; };
+const safeDisplay = (id, d) => { if(_el(id)) _el(id).style.display = d; };
+const formatarDataInversa = (dStr) => dStr ? dStr.split('-').reverse().join('/') : "";
+const pegarDataISO = () => new Date().toISOString().split('T')[0];
+
+// Normalização BLINDADA contra acentos e campos vazios
+const normalizeStr = (str) => {
+    if (str == null) return "";
+    return String(str).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
-let db = null;
-let unsubscribe = null;
-let statsUnsubscribe = null;
-let equipeUnsubscribe = null;
-let logsUnsubscribe = null;
-let sepulturaOriginal = ""; 
-let dadosAtendimentoAtual = null;
-let dadosEstatisticasExportacao = [];
-let chartInstances = {}; 
-let usuarioLogado = null; 
+window.gerarProtocolo = () => { const a = new Date(); return `${a.getFullYear()}${String(a.getMonth()+1).padStart(2,'0')}${String(a.getDate()).padStart(2,'0')}-${String(a.getHours()).padStart(2,'0')}${String(a.getMinutes()).padStart(2,'0')}`; };
 
-// VARIÁVEIS GLOBAIS PARA ASSINATURA
-let signaturePad = null;
-let isDrawing = false;
-let assinaturaResponsavelImg = null;
-let assinaturaAtendenteImg = null;
-let tipoAssinaturaAtual = ''; 
-
-try {
-    if (typeof firebase !== 'undefined') {
-        firebase.initializeApp(firebaseConfig);
-        db = firebase.firestore();
-        console.log("Conectado ao Firebase.");
-    }
-} catch (e) { 
-    console.error("Erro Firebase:", e); 
-}
-
-function getDB() {
-    if (!db && typeof firebase !== 'undefined') {
-        try { 
-            firebase.initializeApp(firebaseConfig); 
-            db = firebase.firestore(); 
-        } catch(e) { 
-            if(firebase.apps.length) db = firebase.firestore(); 
+// --- LÓGICA DE MESCLAGEM DE PDFS (MODAL DA TABELA) ---
+window.abrirModalUnir = p => { _setVal('unir-protocolo-row', p || 'N/A'); _setVal('input-pdfs-row', ''); safeDisplay('modal-unir', 'block'); };
+window.fecharModalUnir = () => safeDisplay('modal-unir', 'none');
+async function processarMesclagem(inputId, proc) {
+    const files = _el(inputId).files;
+    if (!files || files.length === 0) return alert("Selecione os arquivos PDF primeiro.");
+    if (files.length === 1) return alert("Selecione pelo menos 2 arquivos para unir.");
+    try {
+        const { PDFDocument } = window.PDFLib; const mergedPdf = await PDFDocument.create();
+        for (let file of files) {
+            const pdf = await PDFDocument.load(await file.arrayBuffer());
+            (await mergedPdf.copyPages(pdf, pdf.getPageIndices())).forEach(page => mergedPdf.addPage(page));
         }
-    }
-    return db;
+        const blob = new Blob([await mergedPdf.save()], { type: 'application/pdf' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = proc && proc !== 'N/A' ? `E-CIGA_${proc}.pdf` : (dadosAtendimentoAtual?.protocolo ? `E-CIGA_${dadosAtendimentoAtual.protocolo}.pdf` : `Documentos_Unidos_E-CIGA.pdf`);
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+        _el(inputId).value = ""; alert("PDFs unidos com sucesso!");
+        if(inputId === 'input-pdfs-row') window.fecharModalUnir();
+    } catch (e) { console.error(e); alert("Erro ao processar. Certifique-se de usar apenas PDFs."); }
+}
+window.mesclarPDFsRow = () => processarMesclagem('input-pdfs-row', _val('unir-protocolo-row'));
+
+// --- WHATSAPP E TELEFONES ---
+window.enviarWhatsApp = () => {
+    const d = dadosAtendimentoAtual; if (!d) return alert("Nenhum atendimento selecionado.");
+    let tel = d.telefone ? d.telefone.replace(/\D/g, '') : '';
+    if (!tel) return alert("Nenhum telefone cadastrado.");
+    if (tel.length === 10 || tel.length === 11) tel = "55" + tel;
+    const cem = d.cemiterio === 'OUTRO' ? d.cemiterio_outro : d.cemiterio;
+    let msg = `*COORDENAÇÃO DOS CEMITÉRIOS DE NITERÓI*\n\nOlá, *${d.resp_nome ? d.resp_nome.toUpperCase() : 'Requerente'}*.\nEste é o resumo do seu atendimento:\n\n📄 *Protocolo:* ${d.protocolo || 'N/A'}\n👤 *Falecido(a):* ${d.nome_falecido?.toUpperCase() || '-'}\n📍 *Cemitério:* ${cem?.toUpperCase() || '-'}\n🛠️ *Serviço(s):* ${d.servico_requerido?.toUpperCase() || '-'}\n🪦 *Sepultura:* Nº ${d.sepul || '-'} / QD ${d.qd || '-'}\n`;
+    if (d.processo || d.grm) msg += `\n*DADOS ADMINISTRATIVOS:*\n${d.processo ? `📂 *Processo:* ${d.processo}\n` : ''}${d.grm ? `🧾 *GRM:* ${d.grm}\n` : ''}`;
+    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg + "\n_Aguarde enquanto o atendente envia o(s) documento(s) em anexo por aqui._")}`, '_blank');
 }
 
-const dimensoesUrna = { 
-    'NORMAL': 'COMP: 2.00<br>ALT: 0.41<br>LARG: 0.70', 
-    'G': 'COMP: 2.00<br>ALT: 0.45<br>LARG: 0.80', 
-    'GG': 'COMP: 2.00<br>ALT: 0.56<br>LARG: 0.85', 
-    '3G': 'COMP: 2.00<br>ALT: 0.65<br>LARG: 0.95', 
-    'PERPETUA': '' 
-};
-
-function safeDisplay(id, displayType) {
-    const el = document.getElementById(id);
-    if (el) el.style.display = displayType;
+window.addTelefone = (val = "") => {
+    window.telCount++; const newId = 'telefone' + window.telCount; if(_el(newId)) return;
+    const box = _el('box-telefones'), inp = document.createElement('input');
+    inp.type = 'text'; inp.id = newId; inp.style.marginTop = '5px'; inp.placeholder = 'Telefone Adicional'; inp.maxLength = 15; inp.value = val;
+    inp.oninput = function() { window.mascaraTelefone(this) }; box.appendChild(inp);
 }
+window.mascaraTelefone = el => { let v = el.value.replace(/\D/g, ''); el.value = !v ? '' : v.length <= 10 ? v.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{4})(\d)/, "$1-$2") : v.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2").substring(0, 15); };
+window.aplicarMascaraCpfCnpj = el => { let v = el.value.replace(/\D/g, ""); el.value = v.length <= 11 ? v.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2") : v.substring(0, 14).replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d{1,2})$/, "$1-$2"); };
+window.toggleCemiterioOutro = () => { const sel = _el('cemiterio'), inp = _el('cemiterio_outro'); if(sel && inp) { inp.style.display = sel.value === 'OUTRO' ? 'block' : 'none'; inp.required = sel.value === 'OUTRO'; if(sel.value !== 'OUTRO') inp.value = ''; } };
 
-// --- LÓGICA DE INDIGENTE ---
-window.toggleIndigente = function() {
-    const chk = document.getElementById('chk_indigente');
-    const camposObrigatorios = [
-        'resp_nome', 'telefone', 'funeraria', 'isencao', 'tipo_sepultura', 
-        'sepul', 'qd', 'hospital', 'cap', 'data_obito', 'nome', 'causa', 'hora'
-    ];
+// --- GRM & ASSINATURA ---
+window.abrirModalGRM = () => safeDisplay('modal-grm', 'block');
+window.fecharModalGRM = () => safeDisplay('modal-grm', 'none');
 
-    camposObrigatorios.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            if (chk && chk.checked) {
-                if (el.hasAttribute('required')) {
-                    el.removeAttribute('required');
-                    el.setAttribute('data-was-required', 'true');
-                }
-            } else {
-                if (el.getAttribute('data-was-required') === 'true') {
-                     el.setAttribute('required', '');
-                     el.removeAttribute('data-was-required');
-                }
-            }
-        }
-    });
-}
-
-// --- LÓGICA DE ASSINATURA DIGITAL ---
 function setupSignaturePad() {
-    const canvas = document.getElementById('signature-pad');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000';
-
-    function getPos(canvas, evt) {
-        const rect = canvas.getBoundingClientRect();
-        let clientX, clientY;
-        
-        if (evt.touches && evt.touches.length > 0) {
-            clientX = evt.touches[0].clientX;
-            clientY = evt.touches[0].clientY;
-        } else {
-            clientX = evt.clientX;
-            clientY = evt.clientY;
-        }
-
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-
-        return {
-            x: (clientX - rect.left) * scaleX,
-            y: (clientY - rect.top) * scaleY
-        };
-    }
-
-    function startDraw(e) {
-        if(e.type === 'touchstart') e.preventDefault();
-        isDrawing = true;
-        const pos = getPos(canvas, e);
-        ctx.beginPath();
-        ctx.moveTo(pos.x, pos.y);
-    }
-
-    function draw(e) {
-        if (!isDrawing) return;
-        if(e.type === 'touchmove') e.preventDefault();
-        const pos = getPos(canvas, e);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-    }
-
-    function endDraw(e) {
-        if(e.type === 'touchend') e.preventDefault();
-        isDrawing = false;
-    }
-
-    canvas.removeEventListener('mousedown', startDraw);
-    canvas.removeEventListener('mousemove', draw);
-    canvas.removeEventListener('mouseup', endDraw);
-    canvas.removeEventListener('mouseout', endDraw);
-    canvas.removeEventListener('touchstart', startDraw);
-    canvas.removeEventListener('touchmove', draw);
-    canvas.removeEventListener('touchend', endDraw);
-
-    canvas.addEventListener('mousedown', startDraw);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', endDraw);
-    canvas.addEventListener('mouseout', endDraw);
-    canvas.addEventListener('touchstart', startDraw, { passive: false });
-    canvas.addEventListener('touchmove', draw, { passive: false });
-    canvas.addEventListener('touchend', endDraw, { passive: false });
+    const canvas = _el('signature-pad'); if (!canvas) return; const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#000';
+    const getPos = (e) => { const r = canvas.getBoundingClientRect(), t = e.touches ? e.touches[0] : e; return { x: (t.clientX - r.left) * (canvas.width / r.width), y: (t.clientY - r.top) * (canvas.height / r.height) }; };
+    const startDraw = e => { if(e.type==='touchstart') e.preventDefault(); isDrawing=true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    const draw = e => { if(!isDrawing) return; if(e.type==='touchmove') e.preventDefault(); const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+    const endDraw = e => { if(e.type==='touchend') e.preventDefault(); isDrawing=false; };
+    ['mousedown','touchstart'].forEach(e => canvas.addEventListener(e, startDraw, {passive:false}));
+    ['mousemove','touchmove'].forEach(e => canvas.addEventListener(e, draw, {passive:false}));
+    ['mouseup','mouseout','touchend'].forEach(e => canvas.addEventListener(e, endDraw));
 }
-
-window.abrirModalAssinatura = function(tipo) {
-    tipoAssinaturaAtual = tipo;
-    const titulo = document.getElementById('titulo-assinatura');
-    if(titulo) {
-        titulo.innerText = (tipo === 'responsavel') ? 'Assinatura do Responsável' : 'Assinatura da Equipe';
-    }
-    safeDisplay('modal-assinatura', 'flex');
-    window.limparAssinatura(); 
-    setTimeout(setupSignaturePad, 200); 
-}
-
-window.fecharModalAssinatura = function() {
-    safeDisplay('modal-assinatura', 'none');
-}
-
-window.limparAssinatura = function() {
-    const canvas = document.getElementById('signature-pad');
-    if(canvas) {
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-}
-
-window.salvarAssinatura = function() {
-    const canvas = document.getElementById('signature-pad');
-    if (canvas) {
-        const imgData = canvas.toDataURL('image/png');
-        const db = getDB();
-        
-        if (dadosAtendimentoAtual && dadosAtendimentoAtual.id) {
-            let updateData = {};
-            
-            if (tipoAssinaturaAtual === 'responsavel') {
-                assinaturaResponsavelImg = imgData; 
-                dadosAtendimentoAtual.assinatura_responsavel = imgData; 
-                updateData = { assinatura_responsavel: imgData };
-            } else {
-                assinaturaAtendenteImg = imgData; 
-                dadosAtendimentoAtual.assinatura_atendente = imgData; 
-                updateData = { assinatura_atendente: imgData };
-            }
-
-            db.collection("atendimentos").doc(dadosAtendimentoAtual.id).update(updateData)
-                .then(() => console.log("Assinatura salva no banco."))
-                .catch(err => console.error("Erro ao salvar:", err));
-        } else {
-            console.error("ID não encontrado para salvar assinatura.");
-        }
+window.abrirModalAssinatura = tipo => { tipoAssinaturaAtual = tipo; if(_el('titulo-assinatura')) _el('titulo-assinatura').innerText = tipo === 'responsavel' ? 'Assinatura do Requerente' : 'Assinatura da Equipe'; safeDisplay('modal-assinatura', 'flex'); window.limparAssinatura(); setTimeout(setupSignaturePad, 200); };
+window.fecharModalAssinatura = () => safeDisplay('modal-assinatura', 'none');
+window.limparAssinatura = () => { const canvas = _el('signature-pad'); if(canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height); };
+window.salvarAssinatura = () => {
+    const canvas = _el('signature-pad');
+    if (canvas && dadosAtendimentoAtual?.id) {
+        const img = canvas.toDataURL('image/png'), update = tipoAssinaturaAtual === 'responsavel' ? { assinatura_responsavel: img } : { assinatura_atendente: img };
+        if(tipoAssinaturaAtual === 'responsavel') assinaturaResponsavelImg = img; else assinaturaAtendenteImg = img;
+        getDB().collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado?.nome || 'Anon', acao: "ASSINATURA", detalhe: `Req ID: ${dadosAtendimentoAtual.id} (${tipoAssinaturaAtual})`, sistema: "Exumacao" });
+        getDB().collection("requerimentos_exumacao").doc(dadosAtendimentoAtual.id).update(update).then(() => window.visualizarDocumentos(dadosAtendimentoAtual.id));
         window.fecharModalAssinatura();
     }
 }
 
-// --- 2. UTILITÁRIOS GLOBAIS ---
-window.gerarProtocolo = function() {
-    const elData = document.getElementById('data_ficha_modal');
-    const agora = new Date();
-    let ano, mes, dia;
-    if (elData && elData.value) { 
-        const p = elData.value.split('-'); 
-        ano = p[0]; 
-        mes = p[1]; 
-        dia = p[2]; 
-    } else { 
-        ano = agora.getFullYear(); 
-        mes = String(agora.getMonth()+1).padStart(2,'0'); 
-        dia = String(agora.getDate()).padStart(2,'0'); 
-    }
-    return `${ano}${mes}${dia}-${String(agora.getHours()).padStart(2,'0')}${String(agora.getMinutes()).padStart(2,'0')}`;
-}
+// --- BUSCAS E INTEGRAÇÕES ---
+window.buscarCep = () => {
+    const cep = _val('cep').replace(/\D/g, ''); if (cep.length !== 8) return;
+    _el('endereco').placeholder = "Buscando...";
+    fetch(`https://viacep.com.br/ws/${cep}/json/`).then(r => r.json()).then(d => {
+        if (!d.erro) { _setVal('endereco', d.logradouro); _setVal('bairro', d.bairro); _setVal('municipio', `${d.localidade}/${d.uf}`); _setVal('complemento', d.complemento); _el('numero').focus(); } 
+        else { alert("CEP não encontrado."); _setVal('cep', ""); }
+    }).finally(() => _el('endereco').placeholder = "");
+};
 
-window.pegarDataAtualLocal = function() {
-    const agora = new Date();
-    return `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}-${String(agora.getDate()).padStart(2,'0')}`;
-}
+window.buscarRequerentePorCPF = () => {
+    const cpf = _val('cpf'); if (cpf.length < 14) return;
+    _el('resp_nome').placeholder = "Buscando...";
+    getDB().collection("requerimentos_exumacao").where("cpf", "==", cpf).get().then(snap => {
+        if (!snap.empty) {
+            let d = snap.docs.map(doc => doc.data()).sort((a,b) => (b.data_registro ? new Date(b.data_registro) : 0) - (a.data_registro ? new Date(a.data_registro) : 0))[0];
+            ['resp_nome','telefone','rg','endereco','bairro','municipio','cep','numero','complemento','parentesco'].forEach(k => _setVal(k, d[k]));
+            let idx = 2; while(d['telefone'+idx]) { window.addTelefone(d['telefone'+idx]); idx++; }
+        }
+    }).finally(() => _el('resp_nome').placeholder = "");
+};
 
-window.atualizarLabelQuadra = function(local) {
-    const inputQd = document.getElementById('qd');
-    if (inputQd) {
-        const label = inputQd.previousElementSibling;
-        if (label) label.innerText = (local && local.includes('MARUÍ')) ? 'QD' : 'RUA';
-    }
-}
-
-window.carregarCidades = function(uf) {
-    const elCidade = document.getElementById('cidade_obito');
-    if(!uf) { 
-        if(elCidade) { 
-            elCidade.innerHTML = '<option value="">UF</option>'; 
-            elCidade.disabled = true; 
-        } 
-        return; 
-    }
-    if(elCidade) {
-        elCidade.innerHTML = '<option>...</option>'; 
-        elCidade.disabled = true;
-        fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`)
-        .then(r=>r.json())
-        .then(c=>{
-            elCidade.innerHTML = '<option>Selecione</option>';
-            c.sort((a,b)=>a.nome.localeCompare(b.nome));
-            c.forEach(i=>{ 
-                const o=document.createElement('option'); 
-                o.value=i.nome.toUpperCase(); 
-                o.text=i.nome.toUpperCase(); 
-                elCidade.appendChild(o); 
-            });
-            elCidade.disabled=false;
-        });
-    }
-}
-
-window.carregarListaHorarios = function() {
-    const select = document.getElementById('hora');
-    if (!select) return;
-    select.innerHTML = '<option value="">Selecione...</option>';
-    const horarios = [ 
-        "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", 
-        "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", 
-        "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45", 
-        "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45", 
-        "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30" 
-    ];
-    horarios.forEach(hora => { 
-        const option = document.createElement('option'); 
-        option.value = hora; 
-        option.textContent = hora; 
-        select.appendChild(option); 
+// --- AUTENTICAÇÃO E ADMIN ---
+window.fazerLogin = () => {
+    const u = _val('login-usuario'), p = _val('login-senha');
+    if (p === "2026" && u === "admin") return window.liberarAcesso({nome:"Admin", login:"admin"});
+    getDB().collection("equipe").where("login", "==", u).where("senha", "==", p).get().then(snap => {
+        if (!snap.empty) window.liberarAcesso(snap.docs[0].data()); else safeDisplay('msg-erro-login', 'block');
     });
 }
+window.checarLoginEnter = e => { if(e.key==='Enter') window.fazerLogin(); };
+window.liberarAcesso = (usr) => {
+    usuarioLogado = usr || usuarioLogado; sessionStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
+    safeDisplay('tela-bloqueio', 'none');
+    _el('user-display').innerHTML = `<div class="user-info" style="margin-right: 15px; text-align: left;"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(usuarioLogado.nome)}&background=random&color=fff&bold=true" class="user-avatar" style="width: 36px; height: 36px; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><div style="line-height: 1.2;"><div style="font-weight: 800; color: #3699ff; font-size: 13px; text-transform: uppercase;">${usuarioLogado.nome}</div><div style="font-size: 10px; color: #888;">${usuarioLogado.email || 'Atendente'}</div></div></div>`;
+    if(!_val('filtro-data')) _setVal('filtro-data', pegarDataISO());
+    carregarTabela();
+}
+window.fazerLogout = () => { sessionStorage.removeItem('usuarioLogado'); window.location.reload(); }
+window.abrirAdmin = () => { safeDisplay('modal-admin', 'block'); window.abrirAba('tab-equipe'); }
+window.fecharModalAdmin = () => safeDisplay('modal-admin', 'none');
+window.abrirAba = id => {
+    document.querySelectorAll('.tab-pane').forEach(e => e.classList.remove('active')); _el(id).classList.add('active');
+    document.querySelectorAll('.tab-header .tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`.tab-header .tab-btn[onclick="abrirAba('${id}')"]`)?.classList.add('active');
+    if(id==='tab-equipe') window.listarEquipe(); if(id==='tab-logs') window.carregarLogs(); if(id==='tab-stats') window.carregarEstatisticas('7'); if(id==='tab-contribuintes') setTimeout(() => _el('busca-contribuinte-admin').focus(), 100);
+}
 
-// --- 3. CORE (TABELA PRINCIPAL) ---
-window.renderizarTabela = function(lista) {
-    const tbody = document.getElementById('tabela-corpo'); 
-    if(!tbody) return;
+// --- ADMIN: CONTRIBUINTES ---
+window.buscarContribuintesAdmin = () => {
+    const termoOriginal = _val('busca-contribuinte-admin');
+    const termo = normalizeStr(termoOriginal);
+    const tb = _el('lista-contribuintes');
     
-    tbody.innerHTML = ''; 
+    if (termoOriginal.length < 3) return tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Digite pelo menos 3 caracteres para buscar.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Buscando...</td></tr>';
+    
+    const termoLimpo = termo.replace(/[\.\-\/\(\)\s]/g, '');
+    const database = getDB();
+
+    database.collection("requerimentos_exumacao")
+        .orderBy("data_registro", "desc")
+        .limit(1000)
+        .get()
+        .then((snap) => {
+            window.contribuintesMap = {};
+            
+            snap.forEach(doc => {
+                let d = doc.data(); if (!d.cpf) return;
+                
+                let textoBusca = `${d.resp_nome || ''} ${d.cpf || ''} ${d.rg || ''} ${d.telefone || ''}`;
+                let sb = normalizeStr(textoBusca);
+                let sp = sb.replace(/[\.\-\/\(\)\s]/g, '');
+                
+                if (sb.includes(termo) || (termoLimpo !== '' && sp.includes(termoLimpo))) {
+                    if (!window.contribuintesMap[d.cpf]) {
+                        window.contribuintesMap[d.cpf] = d;
+                    }
+                }
+            });
+
+            renderizarTabelaContribuintes(Object.values(window.contribuintesMap));
+        }).catch(e => {
+            tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:red;">Erro na busca.</td></tr>';
+            console.error(e);
+        });
+}
+
+function renderizarTabelaContribuintes(lista) {
+    const tb = _el('lista-contribuintes');
+    tb.innerHTML = ''; 
     
     if (lista.length === 0) { 
-        tbody.innerHTML = '<tr><td colspan="11" style="padding:40px; text-align:center;">Nenhum registro.</td></tr>'; 
+        tb.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Nenhum contribuinte encontrado.</td></tr>'; 
         return; 
     }
 
     lista.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.onclick = () => window.visualizar(item.id);
+        let enderecoCompleto = `${item.endereco || ''}, ${item.numero || 'S/N'} - ${item.bairro || ''} - ${item.municipio || ''}`;
         
-        let isContagioso = false;
-        if(item.causa) { 
-            const c = item.causa.toUpperCase(); 
-            isContagioso = ['COVID', 'MENINGITE', 'TUBERCULOSE', 'H1N1', 'HIV', 'SIDA', 'SARAMPO'].some(d => c.includes(d)); 
-        }
-        if (isContagioso) tr.classList.add('alerta-doenca');
-        
-        let displayResponsavel = "";
-        if (item.isencao === "50") {
-            displayResponsavel += `<span style="font-weight:900;">ACOLHIMENTO 50%</span>`;
-        } else if (item.isencao === "SIM") {
-            displayResponsavel += `<span style="font-weight:900;">ACOLHIMENTO 100%</span>`;
-        } else {
-             if (item.funeraria) displayResponsavel += `<span style="font-weight:bold;">${item.funeraria.toUpperCase()}</span>`;
-             else if (item.resp_nome) displayResponsavel += `<span style="font-weight:bold;">${item.resp_nome.toUpperCase()}</span>`;
-             else displayResponsavel = 'S/D';
-        }
-        displayResponsavel += '<br>';
-        
-        if (item.tipo_urna_detalhe) {
-            displayResponsavel += `<span style="font-weight:bold; font-size:11px;">${item.tipo_urna_detalhe.toUpperCase()}</span>`;
-        }
-        if (item.combo_urna) {
-            displayResponsavel += `<br><span style="font-size:10px;">URNA ${item.combo_urna}</span>`;
-            if (dimensoesUrna[item.combo_urna]) {
-                displayResponsavel += `<br><span style="font-size:9px; color:#666;">${dimensoesUrna[item.combo_urna]}</span>`;
-            }
-        }
-        
-        let servicosExtras = [];
-        if (item.tanato === 'SIM') servicosExtras.push('TANATOPRAXIA');
-        if (item.invol === 'SIM') servicosExtras.push('INVOL');
-        if (item.translado === 'SIM') servicosExtras.push('TRANSLADO');
-        if (item.urna_opc === 'SIM') servicosExtras.push('URNA');
-        if (servicosExtras.length > 0) { 
-            displayResponsavel += `<br><span style="font-size:10px; font-weight:bold;">SERVIÇOS: ${servicosExtras.join(', ')}</span>`; 
-        }
-
-        const conteudoNome = `
-            <div style="font-weight:bold;">${isContagioso ? '⚠️ ' : ''}${item.nome ? item.nome.toUpperCase() : 'NOME NÃO INFORMADO'}</div>
-            <div style="color:red; font-size:10px; font-weight:bold; margin-top:2px;">(${item.causa ? item.causa.toUpperCase() : 'CAUSA NÃO INFORMADA'})</div>
-            ${item.classificacao_obito === 'ANJO' ? '<div style="font-size:9px; color:blue; font-weight:bold;">(ANJO)</div>' : ''}
+        tb.innerHTML += `
+            <tr>
+                <td><b style="color:#333;">${item.resp_nome ? item.resp_nome.toUpperCase() : '-'}</b></td>
+                <td><span style="color:#3699ff; font-weight:bold;">${item.cpf || '-'}</span><br><span style="font-size:11px; color:#666;"><b>RG:</b> ${item.rg || '-'}</span></td>
+                <td>${item.telefone || '-'}</td>
+                <td style="font-size:11px; color:#555;">${enderecoCompleto}</td>
+                <td style="text-align:right;">
+                    <button class="btn-action-square btn-action-edit" onclick="window.editarContribuinteAdmin('${item.cpf}')" title="Editar Contribuinte">✏️</button>
+                </td>
+            </tr>
         `;
+    });
+}
 
-        let labelPerpetua = "";
-        const tipoSep = (item.tipo_sepultura || "").toUpperCase();
-        if (item.perpetua === 'X' || tipoSep.includes('PERPETU')) {
-             let labelTexto = tipoSep.replace('PERPETUA', 'PERPÉTUA').replace('PERPETUO', 'PERPÉTUO');
-             if(labelTexto === "") labelTexto = "PERPÉTUA";
-             labelPerpetua = `
-                <div style="font-weight:bold; font-size:10px; color:#2196F3; margin-top:2px;">${labelTexto}</div>
-                <div style="font-weight:bold; font-size:10px; color:#2196F3;">L: ${item.livro_perpetua||''} F: ${item.folha_perpetua||''}</div>
-             `;
-        }
-        let conteudoSepultura = `<div style="font-weight:bold; font-size:13px; color:#333;">${item.sepul||''}</div>${labelPerpetua}`;
+window.editarContribuinteAdmin = cpf => {
+    const d = window.contribuintesMap[cpf]; if(!d) return;
+    ['resp_nome','cpf','rg','telefone','cep','endereco','numero','complemento','bairro','municipio'].forEach(k => _setVal(`edit-cont-${k.split('_')[1]||k}`, d[k]));
+    _el('div-editar-contribuinte').classList.remove('hidden'); _el('edit-cont-nome').focus();
+}
+window.cancelarEdicaoContribuinte = () => _el('div-editar-contribuinte').classList.add('hidden');
+window.salvarEdicaoContribuinte = () => {
+    const cpf = _val('edit-cont-cpf'); if(!cpf) return;
+    const data = { resp_nome:_val('edit-cont-nome'), rg:_val('edit-cont-rg'), telefone:_val('edit-cont-tel'), cep:_val('edit-cont-cep'), endereco:_val('edit-cont-end'), numero:_val('edit-cont-num'), complemento:_val('edit-cont-comp'), bairro:_val('edit-cont-bairro'), municipio:_val('edit-cont-mun') };
+    const db = getDB();
+    db.collection("requerimentos_exumacao").where("cpf", "==", cpf).get().then(snap => {
+        const batch = db.batch(); snap.forEach(doc => batch.update(doc.ref, data));
+        batch.commit().then(() => { alert("Atualizado globalmente com sucesso!"); db.collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado?.nome || 'Anon', acao: "EDIÇÃO", detalhe: `Atualização global do contribuinte CPF: ${cpf}`, sistema: "Exumacao" }); window.cancelarEdicaoContribuinte(); window.buscarContribuintesAdmin(); });
+    });
+}
 
-        let displayFalecimento = '';
-        if (item.data_obito && item.data_ficha) {
-            const partes = item.data_obito.split('-'); 
-            const dataFormatada = `${partes[2]}/${partes[1]}`; 
-            let textoTempo = "";
-            if (item.hora_obito && item.hora) {
-                const inicio = new Date(`${item.data_obito}T${item.hora_obito}`); 
-                const fim = new Date(`${item.data_ficha}T${item.hora}`);
-                if (!isNaN(inicio) && !isNaN(fim)) { 
-                    const diffMs = fim - inicio; 
-                    const diffHrs = Math.floor(diffMs / 3600000); 
-                    const diffMins = Math.round(((diffMs % 3600000) / 60000)); 
-                    textoTempo = `<br><span style="font-weight:bold; font-size:10px;">TEMPO DE FALECIMENTO: ${diffHrs}H ${diffMins}M</span>`; 
-                }
+// --- ADMIN: EQUIPE ---
+window.listarEquipe = () => {
+    if (equipeUnsubscribe) equipeUnsubscribe();
+    equipeUnsubscribe = getDB().collection("equipe").orderBy("nome").onSnapshot(snap => {
+        _el('lista-equipe').innerHTML = '';
+        snap.forEach(doc => {
+            const u = doc.data();
+            _el('lista-equipe').innerHTML += `<tr><td><div class="user-info"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(u.nome)}&background=random&color=fff&bold=true" class="user-avatar"><div><div style="font-weight: 600; color: #333; font-size: 14px;">${u.nome}</div><div style="font-size: 11px; color: #888;">${u.email||'Sem e-mail'}</div></div></div></td><td><span style="color: #555; font-weight: 500;">${u.login}</span></td><td><div style="display:flex; align-items:center;"><span class="senha-oculta" data-senha="${u.senha}">••••••</span><button type="button" class="btn-action-square btn-action-view" onclick="window.toggleSenha(this)" title="Ver">👁️</button></div></td><td><div class="action-group"><button class="btn-action-square btn-action-edit" onclick="window.editarFuncionario('${doc.id}')" title="Editar">✏️</button><button class="btn-action-square btn-action-del" onclick="window.excluirFuncionario('${doc.id}')" title="Excluir">🗑️</button></div></td></tr>`;
+        });
+    });
+}
+window.toggleSenha = btn => { const s = btn.previousElementSibling; if(s.innerText==='••••••'){s.innerText=s.getAttribute('data-senha');s.style.letterSpacing='normal';s.style.fontSize='13px';}else{s.innerText='••••••';s.style.letterSpacing='2px';s.style.fontSize='16px';} }
+window.adicionarFuncionario = () => { const nome=_val('novo-nome'), login=_val('novo-login'), email=_val('novo-email'), senha=_val('nova-senha'); if(!nome||!login||!senha) return alert("Preencha nome, login e senha."); getDB().collection("equipe").add({nome,login,email,senha}).then(()=>{alert("Usuário adicionado!"); ['nome','login','email','senha'].forEach(k=>_setVal(`novo-${k}`,'')); }); }
+window.excluirFuncionario = id => { if(confirm("Deseja excluir este usuário?")) getDB().collection("equipe").doc(id).delete(); }
+window.editarFuncionario = id => getDB().collection("equipe").doc(id).get().then(doc => { if(doc.exists) { const u=doc.data(); _setVal('edit-id', doc.id); ['nome','login','email','senha'].forEach(k=>_setVal(`edit-${k}`,u[k]||'')); _el('box-novo-usuario').classList.add('hidden'); _el('div-editar-usuario').classList.remove('hidden'); } });
+window.salvarEdicaoUsuario = () => { const id=_val('edit-id'), nome=_val('edit-nome'), email=_val('edit-email'), senha=_val('edit-senha'); if(!nome||!senha) return alert("Nome e senha obrigatórios."); getDB().collection("equipe").doc(id).update({nome,email,senha}).then(()=>{alert("Usuário atualizado!"); window.cancelarEdicao();}); }
+window.cancelarEdicao = () => { ['id','nome','login','email','senha'].forEach(k=>_setVal(`edit-${k}`,'')); _el('div-editar-usuario').classList.add('hidden'); _el('box-novo-usuario').classList.remove('hidden'); }
+
+// --- ADMIN: LOGS E EXPORTAÇÕES ---
+window.carregarLogs = () => {
+    if (logsUnsubscribe) logsUnsubscribe();
+    logsUnsubscribe = getDB().collection("auditoria").limit(300).orderBy("data_log", "desc").onSnapshot(snap => {
+        let count = 0, tb = _el('tabela-logs'); tb.innerHTML = '';
+        snap.forEach(doc => {
+            const l = doc.data(); if(l.sistema !== "Exumacao") return; count++;
+            let dh = l.data_log ? new Date(l.data_log) : null;
+            tb.innerHTML += `<tr><td>${dh ? `${String(dh.getDate()).padStart(2,'0')}/${String(dh.getMonth()+1).padStart(2,'0')}/${dh.getFullYear()}<br><span style="font-size:11px; color:#666;">${String(dh.getHours()).padStart(2,'0')}:${String(dh.getMinutes()).padStart(2,'0')}</span>` : '-'}</td><td><b>${l.usuario}</b></td><td><span style="color:${l.acao==='EXCLUSÃO'?'red':'#333'}; font-weight:bold;">[${l.acao}]</span> ${l.detalhe}</td></tr>`;
+        });
+        if(count===0) tb.innerHTML = '<tr><td colspan="3">Nenhum registro.</td></tr>';
+    });
+}
+window.gerarBackupJSON = () => getDB().collection("requerimentos_exumacao").get().then(snap => { let d=[]; snap.forEach(doc=>{let i=doc.data(); i._id=doc.id; d.push(i);}); const a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(d,null,2)); a.download=`Backup_${pegarDataISO()}.json`; document.body.appendChild(a); a.click(); a.remove(); getDB().collection("auditoria").add({data_log:new Date().toISOString(),usuario:usuarioLogado?.nome||'Anon',acao:"BACKUP",detalhe:`Backup JSON gerado`,sistema:"Exumacao"}); });
+window.exportarDadosExcel = () => { if(typeof XLSX === 'undefined') return alert("Erro: Biblioteca Excel ausente."); getDB().collection("requerimentos_exumacao").orderBy("data_registro","desc").get().then(snap=>{ let d=[]; snap.forEach(doc=>{ let i=doc.data(); d.push({"Nome":i.resp_nome?.toUpperCase()||"-","CPF":i.cpf||"-","Nº Processo":i.processo||"-","Nº GRM":i.grm||"-"});}); XLSX.writeFile({SheetNames:["Dados"],Sheets:{Dados:XLSX.utils.json_to_sheet(d)}},`Processos_${pegarDataISO()}.xlsx`); getDB().collection("auditoria").add({data_log:new Date().toISOString(),usuario:usuarioLogado?.nome||'Anon',acao:"EXPORTAÇÃO",detalhe:`Exportação Excel`,sistema:"Exumacao"}); }); }
+window.exportarDadosPDF = () => { if(!window.jspdf) return alert("Erro: Biblioteca PDF ausente."); const doc=new window.jspdf.jsPDF(); getDB().collection("requerimentos_exumacao").orderBy("data_registro","desc").get().then(snap=>{ let b=[]; snap.forEach(doc=>{let i=doc.data(); b.push([i.resp_nome?.toUpperCase()||"-",i.cpf||"-",i.processo||"-",i.grm||"-"]);}); doc.text("Relatório de Processos",14,15); doc.setFontSize(10); doc.text(`Gerado em: ${new Date().toLocaleString()}`,14,22); doc.autoTable({head:[['Nome Completo','CPF','Nº Processo','Nº GRM']],body:b,startY:28,styles:{fontSize:9},headStyles:{fillColor:[54,153,255]}}); doc.save(`Processos_${pegarDataISO()}.pdf`); getDB().collection("auditoria").add({data_log:new Date().toISOString(),usuario:usuarioLogado?.nome||'Anon',acao:"EXPORTAÇÃO",detalhe:`Exportação PDF`,sistema:"Exumacao"}); }); }
+window.baixarLogsExcel = () => getDB().collection("auditoria").limit(1000).orderBy("data_log","desc").get().then(snap=>{ let d=[]; snap.forEach(doc=>{let i=doc.data(); if(i.sistema==="Exumacao") d.push({"Data/Hora":i.data_log?new Date(i.data_log).toLocaleString():'-',"Usuário":i.usuario,"Ação":i.acao,"Detalhes":i.detalhe});}); XLSX.writeFile({SheetNames:["Logs"],Sheets:{Logs:XLSX.utils.json_to_sheet(d)}},`Logs_${pegarDataISO()}.xlsx`); });
+window.baixarLogsPDF = () => { const doc=new window.jspdf.jsPDF(); getDB().collection("auditoria").limit(1000).orderBy("data_log","desc").get().then(snap=>{ let b=[]; snap.forEach(doc=>{let i=doc.data(); if(i.sistema==="Exumacao") b.push([i.data_log?new Date(i.data_log).toLocaleString():'-',i.usuario,`[${i.acao}] ${i.detalhe}`]);}); doc.text("Auditoria",14,10); doc.autoTable({head:[['Data/Hora','Usuário','Ação/Detalhes']],body:b,startY:20}); doc.save(`Logs_${pegarDataISO()}.pdf`); }); }
+window.baixarRelatorioCompleto = () => { if(confirm("Baixar todos os requerimentos?")) getDB().collection("requerimentos_exumacao").get().then(snap=>{ let d=[]; snap.forEach(doc=>{ let i=doc.data(); d.push([i.protocolo, i.data_registro?new Date(i.data_registro).toLocaleDateString():'-', i.resp_nome, i.nome_falecido, i.cemiterio, i.servico_requerido, i.processo, i.grm, i.atendente_sistema]);}); XLSX.writeFile({SheetNames:["Req"],Sheets:{Req:XLSX.utils.aoa_to_sheet([["Protocolo","Data","Requerente","Falecido","Cemitério","Serviço","Processo","GRM","Atendente"], ...d])}},`Requerimentos.xlsx`); }); }
+window.baixarExcel = () => { if(dadosEstatisticasExportacao.length) XLSX.writeFile({SheetNames:["Stats"],Sheets:{Stats:XLSX.utils.json_to_sheet(dadosEstatisticasExportacao)}},`Stats.xlsx`); }
+
+// --- ADMIN: ESTATÍSTICAS ---
+window.carregarEstatisticas = (modo) => {
+    let dInicio = new Date(), ds = "";
+    if (modo === 'mes') { dInicio = new Date(dInicio.getFullYear(), dInicio.getMonth(), 1); ds = dInicio.toISOString(); } 
+    else { dInicio.setDate(dInicio.getDate() - parseInt(modo)); ds = dInicio.toISOString(); }
+    getDB().collection("requerimentos_exumacao").where("data_registro", ">=", ds).onSnapshot(snap => {
+        let servicos = {}, cemiterios = {}, total = 0;
+        snap.forEach(doc => {
+            const d = doc.data(); total++;
+            if(d.servico_requerido) d.servico_requerido.split(',').forEach(s => { let k = s.trim().toUpperCase(); if(k) servicos[k] = (servicos[k]||0)+1; });
+            let c = d.cemiterio?.toUpperCase() || "N/A"; if(c==='OUTRO') c = d.cemiterio_outro?.toUpperCase() || c; cemiterios[c] = (cemiterios[c]||0)+1;
+        });
+        if(_el('kpi-total')) _el('kpi-total').innerText = total;
+        const buildChart = (id, type, dataObj, color) => {
+            const sort = Object.entries(dataObj).sort((a,b)=>b[1]-a[1]).slice(0,10);
+            if(_el(id) && window.Chart) {
+                if(chartInstances[id]) chartInstances[id].destroy();
+                chartInstances[id] = new Chart(_el(id), { type, data: { labels: sort.map(x=>x[0]), datasets: [{ data: sort.map(x=>x[1]), backgroundColor: color, borderRadius: type==='bar'?6:0 }] }, options: { maintainAspectRatio: false, indexAxis: type==='bar'?'y':'x', plugins: { legend: { display: type==='doughnut', position:'bottom' } } } });
+            } return sort;
+        };
+        dadosEstatisticasExportacao = buildChart('grafico-servicos', 'bar', servicos, 'rgba(54, 153, 255, 0.85)').map(([c,q]) => ({"Serviço": c, "Quantidade": q}));
+        buildChart('grafico-cemiterios', 'doughnut', cemiterios, ['#3699ff', '#27ae60', '#f39c12', '#e74c3c', '#9b59b6']);
+    });
+}
+
+// --- TABELA PRINCIPAL E BUSCA ---
+window.carregarTabela = () => {
+    if (unsubscribe) unsubscribe(); const fd = _val('filtro-data');
+    let q = getDB().collection("requerimentos_exumacao").orderBy("data_registro", "desc");
+    if (fd) q = q.where("data_registro", ">=", fd).where("data_registro", "<=", fd + "T23:59:59.999Z"); else q = q.limit(50);
+    unsubscribe = q.onSnapshot(snap => renderizarTabela(snap.docs.map(doc => ({...doc.data(), id: doc.id}))));
+}
+
+window.realizarBusca = () => {
+    const termoOriginal = _val('input-busca'); 
+    const termo = normalizeStr(termoOriginal);
+    const fd = _el('filtro-data');
+    
+    if(!termoOriginal) { 
+        if(!_val('filtro-data')) _setVal('filtro-data', pegarDataISO()); 
+        return carregarTabela(); 
+    }
+    
+    _setVal('filtro-data', ''); 
+    if(unsubscribe) unsubscribe(); 
+    const tl = termo.replace(/[\.\-\/\(\)\s]/g, '');
+    
+    unsubscribe = getDB().collection("requerimentos_exumacao").orderBy("data_registro", "desc").limit(1000).onSnapshot(snap => {
+        let lista = [];
+        snap.forEach(doc => {
+            let d = doc.data(); d.id = doc.id;
+            
+            let textoBusca = `${d.protocolo||''} ${d.resp_nome||''} ${d.nome_falecido||''} ${d.cpf||''} ${d.rg||''} ${d.telefone||''} ${d.processo||''} ${d.cemiterio||''}`;
+            let idx = 2; 
+            while(d['telefone'+idx]) { textoBusca += ' ' + d['telefone'+idx]; idx++; }
+            
+            let sb = normalizeStr(textoBusca);
+            
+            if (sb.includes(termo) || (tl && sb.replace(/[\.\-\/\(\)\s]/g, '').includes(tl))) {
+                lista.push(d);
             }
-            displayFalecimento = `<div style="line-height:1.3;"><span style="color:#c0392b; font-weight:bold;">DIA:</span> ${dataFormatada}<br><span style="color:#c0392b; font-weight:bold;">AS:</span> ${item.hora_obito || '--:--'}${textoTempo}</div>`;
-        } else if (item.falecimento) { 
-            displayFalecimento = `<div>${item.falecimento}</div>`; 
-        }
+        }); 
+        renderizarTabela(lista);
+    });
+}
 
-        let btnMap = '';
-        const cleanCoords = item.geo_coords ? item.geo_coords.replace(/\s/g, '') : '';
-        if (cleanCoords && cleanCoords.includes(',')) {
-             btnMap = `<button class="btn-icon btn-mapa-circle" onclick="event.stopPropagation(); window.open('https://www.google.com/maps?q=${cleanCoords}', '_blank')" title="Ver Localização">📍</button>`;
-        }
-
-        tr.innerHTML = `
-            <td style="vertical-align:middle;">${displayResponsavel}</td>
-            <td style="text-align: center; vertical-align:middle;">${item.hora||''}</td>
-            <td style="text-align: center; vertical-align:middle;">${conteudoNome}</td>
-            <td style="text-align: center; vertical-align:middle;">${item.gav||''}</td>
-            <td style="text-align: center; vertical-align:middle;">${item.car||''}</td>
-            <td style="text-align: center; vertical-align:middle;">${conteudoSepultura}</td>
-            <td style="text-align: center; vertical-align:middle;">${item.qd||''}</td>
-            <td style="text-align: center; vertical-align:middle; font-size:11px;">${item.hospital||''}</td>
-            <td style="text-align: center; vertical-align:middle;">${item.cap||''}</td>
-            <td style="text-align: center; vertical-align:middle;">${displayFalecimento}</td>
+function renderizarTabela(lista) {
+    const tb = _el('tabela-corpo'); if(!tb) return; tb.innerHTML = ''; 
+    if (!lista.length) return tb.innerHTML = '<tr><td colspan="7" style="padding:40px; text-align:center;">Nenhum registro encontrado.</td></tr>';
+    lista.forEach(i => {
+        let tl = i.telefone || ''; let tIdx = 2; while(i['telefone'+tIdx]) { tl += ' / ' + i['telefone'+tIdx]; tIdx++; }
+        let servicosHtml = i.servico_requerido ? i.servico_requerido.split(',').map(s => `<span style="display:inline-block; border: 1px solid #3699ff; color: #3699ff; border-radius: 4px; padding: 4px 8px; font-size: 10px; font-weight: bold; margin: 2px;">${s.trim().toUpperCase()}</span>`).join('') : '-';
+        let cemDisplay = i.cemiterio === 'OUTRO' ? i.cemiterio_outro : i.cemiterio;
+        let cemBadge = `<span style="color:#e83e8c; font-weight:800; font-size:11px;">📍 ${cemDisplay?.toUpperCase()||'-'}</span>`;
+        
+        tb.innerHTML += `<tr onclick="window.visualizarDocumentos('${i.id}')">
+            <td style="vertical-align:middle;"><b>${i.resp_nome?.toUpperCase()||'-'}</b><br><span style="font-size:11px; color:#555;"><span style="color:#e74c3c;">📞</span> ${tl||'-'}</span></td>
+            <td style="vertical-align:middle;"><span style="color:#34495e;">👤</span> <b style="color:#333;">${i.nome_falecido?.toUpperCase()||'-'}</b></td>
+            <td style="vertical-align:middle;">${cemBadge}</td>
+            <td style="vertical-align:middle;">${servicosHtml}</td>
+            <td style="vertical-align:middle; font-size:13px; line-height: 1.5;">
+                <div style="color: #3699ff;"><b>Prot:</b> <span style="font-weight:bold;">${i.protocolo||'-'}</span></div>
+                ${i.processo ? `<div style="color: #d35400;"><b>Proc:</b> <span style="font-weight:bold;">${i.processo}</span></div>` : ''}
+                <div style="color: #27ae60;"><b>GRM:</b> <span style="font-weight:bold;">${i.grm||'-'}</span></div>
+            </td>
+            <td style="vertical-align:middle; color:#555;">${i.data_registro?formatarDataInversa(i.data_registro.split('T')[0]):'-'}</td>
             <td style="text-align:right; vertical-align:middle;">
                 <div style="display:flex; gap:5px; justify-content:flex-end;">
-                    ${btnMap}
-                    <button class="btn-icon btn-editar-circle" onclick="event.stopPropagation();window.editar('${item.id}')">✏️</button>
-                    <button class="btn-icon btn-excluir-circle" onclick="event.stopPropagation();window.excluir('${item.id}')">🗑️</button>
+                    <button class="btn-icon btn-editar-circle" title="Editar Requerimento" onclick="event.stopPropagation();window.editar('${i.id}')">✏️</button>
+                    <button class="btn-icon btn-liberar-circle" title="Preencher Liberação" onclick="event.stopPropagation();window.abrirLiberacao('${i.id}')">📝</button>
+                    <button class="btn-icon" style="background-color: #f4ecf8; color: #8e44ad; border:none; border-radius:8px; cursor:pointer; width:30px; height:30px; display:flex; justify-content:center; align-items:center;" title="Unir PDFs" onclick="event.stopPropagation();window.abrirModalUnir('${i.protocolo}')">📁</button>
+                    <button class="btn-icon btn-excluir-circle" title="Excluir" onclick="event.stopPropagation();window.excluir('${i.id}')">🗑️</button>
                 </div>
-            </td>
-        `;
-        tbody.appendChild(tr);
+            </td></tr>`;
     });
 }
 
-// FUNÇÃO DE BUSCA
-window.realizarBusca = function() {
-    const termo = document.getElementById('input-busca').value.trim().toUpperCase();
-    if (!termo) { 
-        alert("Digite um nome para buscar."); 
-        return; 
+// --- MODAIS GERAIS DO REQUERIMENTO ---
+window.abrirModal = () => {
+    _el('form-atendimento').reset(); _setVal('docId',''); _setVal('protocolo','');
+    const bx = _el('box-telefones'); if(bx) { const inps = bx.querySelectorAll('input'); for(let i=1; i<inps.length; i++) bx.removeChild(inps[i]); window.telCount = 1; }
+    window.toggleCemiterioOutro(); if(usuarioLogado) _setVal('atendente_sistema', usuarioLogado.nome); safeDisplay('modal', 'block');
+}
+window.fecharModal = () => safeDisplay('modal', 'none');
+window.fecharModalVisualizar = () => safeDisplay('modal-visualizar', 'none');
+window.editar = id => getDB().collection("requerimentos_exumacao").doc(id).get().then(doc => {
+    if(doc.exists) {
+        const d = doc.data(); const bx = _el('box-telefones');
+        if(bx) { const inps = bx.querySelectorAll('input'); for(let i=1; i<inps.length; i++) bx.removeChild(inps[i]); window.telCount = 1; }
+        let idx = 2; while(d['telefone'+idx]) { window.addTelefone(d['telefone'+idx]); idx++; }
+        Object.keys(d).forEach(k => { const el = _el(k); if(el && el.type!=='file') { if(el.tagName==='SELECT' && el.multiple) Array.from(el.options).forEach(o=>o.selected = d[k]?.includes(o.value)); else el.value = d[k]; } });
+        window.toggleCemiterioOutro(); _setVal('docId', doc.id); safeDisplay('modal', 'block');
     }
-    
-    const database = getDB();
-    if (!database) return;
-
-    if (unsubscribe) unsubscribe();
-    
-    unsubscribe = database.collection("atendimentos")
-        .orderBy("nome")
-        .startAt(termo)
-        .endAt(termo + "\uf8ff")
-        .limit(20)
-        .onSnapshot((snap) => {
-            let lista = [];
-            snap.forEach(doc => {
-                let d = doc.data();
-                d.id = doc.id;
-                lista.push(d);
-            });
-            window.renderizarTabela(lista);
-        });
-}
-
-window.atualizarListener = function(data, local) {
-    const database = getDB(); 
-    if(!database) return;
-    
-    if (unsubscribe) unsubscribe();
-    
-    unsubscribe = database.collection("atendimentos")
-        .where("data_ficha", "==", data)
-        .onSnapshot((snap) => {
-            let lista = [];
-            snap.forEach(doc => { 
-                let d = doc.data(); 
-                d.id = doc.id; 
-                if ((d.local || "CEMITÉRIO DO MARUÍ") === local) {
-                    lista.push(d); 
-                }
-            });
-            lista.sort((a,b) => (a.hora < b.hora ? -1 : 1));
-            window.renderizarTabela(lista);
-        });
-}
-
-// --- 4. LOGIN E ADMIN ---
-window.fazerLogin = function() {
-    const u = document.getElementById('login-usuario').value.trim();
-    const p = document.getElementById('login-senha').value.trim();
-    
-    if (p === "2026") { 
-        usuarioLogado = {nome:"Admin", login:"admin"}; 
-        window.liberarAcesso(); 
-        return; 
-    }
-    
-    const database = getDB();
-    if (!database) { 
-        alert("Sem conexão com banco."); 
-        return; 
-    }
-    
-    database.collection("equipe").where("login", "==", u).where("senha", "==", p).get()
-        .then(snap => {
-            if (!snap.empty) { 
-                usuarioLogado = snap.docs[0].data(); 
-                window.liberarAcesso(); 
-            } else { 
-                alert("Dados incorretos."); 
-            }
-        });
-}
-
-window.liberarAcesso = function() {
-    safeDisplay('tela-bloqueio', 'none');
-    sessionStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
-    const il = document.getElementById('filtro-local');
-    if(il) { 
-        window.atualizarListener(window.pegarDataAtualLocal(), il.value); 
-        window.atualizarLabelQuadra(il.value); 
-    }
-}
-
-window.abrirAdmin = function() { 
-    safeDisplay('modal-admin', 'block'); 
-    window.abrirAba('tab-equipe'); 
-}
-
-window.fecharModalAdmin = function() { 
-    safeDisplay('modal-admin', 'none'); 
-}
-
-window.abrirAba = function(id) {
-    Array.from(document.getElementsByClassName('tab-pane')).forEach(e => e.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    
-    const buttons = document.querySelectorAll('.tab-header .tab-btn');
-    buttons.forEach(btn => btn.classList.remove('active'));
-    
-    if (id === 'tab-equipe') buttons[0].classList.add('active');
-    if (id === 'tab-stats') buttons[1].classList.add('active');
-    if (id === 'tab-logs') buttons[2].classList.add('active');
-    if (id === 'tab-backup') buttons[3].classList.add('active');
-
-    if(id==='tab-equipe') window.listarEquipe();
-    if(id==='tab-logs') window.carregarLogs();
-    if(id==='tab-stats') window.carregarEstatisticas('7');
-}
-
-// --- AUDITORIA ---
-window.carregarLogs = function() {
-    const database = getDB();
-    const tbody = document.getElementById('tabela-logs');
-    if(!database || !tbody) return;
-    
-    tbody.innerHTML = '<tr><td colspan="3">Carregando...</td></tr>';
-    
-    logsUnsubscribe = database.collection("atendimentos")
-        .limit(50)
-        .orderBy("data_ficha", "desc")
-        .onSnapshot(snap => {
-            tbody.innerHTML = '';
-            if(snap.empty) { 
-                tbody.innerHTML = '<tr><td colspan="3">Nenhum registro encontrado.</td></tr>'; 
-                return; 
-            }
-            
-            let logs = [];
-            snap.forEach(doc => { logs.push(doc.data()); });
-            
-            logs.forEach(log => {
-                let displayDataHora = '-';
-                if (log.data_hora_atendimento) {
-                    const dh = new Date(log.data_hora_atendimento);
-                    if(!isNaN(dh)) {
-                        displayDataHora = `${dh.getDate().toString().padStart(2,'0')}/${(dh.getMonth()+1).toString().padStart(2,'0')}/${dh.getFullYear()} <br> <span style="font-size:11px; color:#666;">${dh.getHours().toString().padStart(2,'0')}:${dh.getMinutes().toString().padStart(2,'0')}</span>`;
-                    }
-                } else {
-                    const p = log.data_ficha ? log.data_ficha.split('-').reverse().join('/') : '-';
-                    displayDataHora = p;
-                }
-                const atendente = log.atendente_sistema ? log.atendente_sistema.toUpperCase() : 'SISTEMA';
-                const detalhe = `Cadastro: <b>${log.nome}</b>`;
-                
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${displayDataHora}</td><td>${atendente}</td><td>${detalhe}</td>`;
-                tbody.appendChild(tr);
-            });
-        });
-}
-
-// --- FUNÇÕES DE EXPORTAÇÃO E BACKUP ---
-window.baixarRelatorioCompleto = function() {
-    if(!getDB()) return; 
-    if(!confirm("Baixar relatório?")) return;
-    if(typeof XLSX === 'undefined') { alert("Biblioteca Excel não carregada."); return; }
-    
-    getDB().collection("atendimentos").get().then(snap => {
-        let dados = [];
-        snap.forEach(doc => {
-            let d = doc.data();
-            dados.push([d.data_ficha, d.hora, d.nome, d.causa, d.resp_nome, d.telefone, d.funeraria, d.local, d.sepul, d.protocolo, d.atendente_sistema]);
-        });
-        const ws = XLSX.utils.aoa_to_sheet([["Data","Hora","Nome","Causa","Resp","Tel","Funeraria","Local","Sepul","Proto","Atendente"], ...dados]);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Geral");
-        XLSX.writeFile(wb, "Relatorio_Geral.xlsx");
-    });
-}
-
-window.baixarExcel = function() {
-    if(typeof XLSX === 'undefined' || dadosEstatisticasExportacao.length === 0) { 
-        alert("Sem dados ou biblioteca."); 
-        return; 
-    }
-    const ws = XLSX.utils.json_to_sheet(dadosEstatisticasExportacao);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Stats");
-    XLSX.writeFile(wb, "Estatisticas.xlsx");
-}
-
-window.baixarLogsExcel = function() { 
-    if(typeof XLSX === 'undefined') { alert("Erro: Biblioteca Excel ausente."); return; } 
-    const db = getDB(); 
-    db.collection("atendimentos").limit(100).orderBy("data_ficha", "desc").get().then(snap => { 
-        let dados = []; 
-        snap.forEach(doc => { 
-            const d = doc.data(); 
-            const dataF = d.data_ficha ? d.data_ficha.split('-').reverse().join('/') : '-'; 
-            const atendente = d.atendente_sistema ? d.atendente_sistema.toUpperCase() : 'SISTEMA'; 
-            dados.push({ "Data": dataF, "Usuário": atendente, "Ação/Detalhes": `Cadastro: ${d.nome}` }); 
-        }); 
-        const ws = XLSX.utils.json_to_sheet(dados); 
-        const wb = XLSX.utils.book_new(); 
-        XLSX.utils.book_append_sheet(wb, ws, "Auditoria"); 
-        XLSX.writeFile(wb, "Logs_Auditoria.xlsx"); 
-    }); 
-}
-
-window.baixarLogsPDF = function() { 
-    if(!window.jspdf) { alert("Erro: Biblioteca PDF ausente."); return; } 
-    const { jsPDF } = window.jspdf; 
-    const doc = new jsPDF(); 
-    const db = getDB(); 
-    
-    db.collection("atendimentos").limit(100).orderBy("data_ficha", "desc").get().then(snap => { 
-        let body = []; 
-        snap.forEach(doc => { 
-            const d = doc.data(); 
-            const dataF = d.data_ficha ? d.data_ficha.split('-').reverse().join('/') : '-'; 
-            const atendente = d.atendente_sistema ? d.atendente_sistema.toUpperCase() : 'SISTEMA'; 
-            body.push([dataF, atendente, `Cadastro: ${d.nome}`]); 
-        }); 
-        doc.text("Relatório de Auditoria", 14, 10); 
-        doc.autoTable({ 
-            head: [['Data', 'Usuário', 'Ação/Detalhes']], 
-            body: body, 
-            startY: 20 
-        }); 
-        doc.save("Logs_Auditoria.pdf"); 
-    }); 
-}
-
-window.baixarTodosExcel = function() {
-    if(typeof XLSX === 'undefined') { alert("Biblioteca Excel não carregada."); return; }
-    getDB().collection("atendimentos").get().then(snap => {
-        let dados = [];
-        snap.forEach(doc => {
-            let d = doc.data();
-            dados.push({
-                "ID": doc.id,
-                "Protocolo": d.protocolo || '',
-                "Data Registro": d.data_hora_atendimento || '',
-                "Data Sepultamento": d.data_ficha || '',
-                "Hora": d.hora || '',
-                "Nome": d.nome || '',
-                "Causa": d.causa || '',
-                "Responsável": d.resp_nome || '',
-                "Telefone": d.telefone || '',
-                "Funerária": d.funeraria || '',
-                "Cemitério": d.local || '',
-                "Sepultura": d.sepul || '',
-                "Quadra": d.qd || '',
-                "Atendente": d.atendente_sistema || ''
-            });
-        });
-        const ws = XLSX.utils.json_to_sheet(dados);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Todos_Atendimentos");
-        XLSX.writeFile(wb, "Backup_Atendimentos.xlsx");
-    });
-}
-
-window.baixarTodosPDF = function() {
-    if(!window.jspdf) { alert("Biblioteca PDF não carregada."); return; }
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('landscape');
-    
-    getDB().collection("atendimentos").get().then(snap => {
-        let body = [];
-        snap.forEach(doc => {
-            let d = doc.data();
-            const dataF = d.data_ficha ? d.data_ficha.split('-').reverse().join('/') : '-';
-            body.push([
-                dataF, 
-                d.hora || '-', 
-                (d.nome || '').substring(0,20), 
-                (d.causa || '').substring(0,20), 
-                (d.resp_nome || '').substring(0,15), 
-                d.telefone || '-', 
-                (d.local || '').replace('CEMITÉRIO DO ', '').replace('CEMITÉRIO DE ', '').trim(), 
-                d.sepul || '-', 
-                d.protocolo || '-'
-            ]);
-        });
-        doc.text("Backup Completo de Atendimentos", 14, 10);
-        doc.autoTable({ 
-            head: [['Data', 'Hora', 'Nome', 'Causa', 'Responsável', 'Tel', 'Local', 'Sepul', 'Protocolo']], 
-            body: body, 
-            startY: 15,
-            styles: { fontSize: 8 }
-        });
-        doc.save("Backup_Atendimentos.pdf");
-    });
-}
-
-window.gerarBackup = async function() {
-    const db = getDB();
-    if(!db) return;
-    
-    try {
-        const btn = event.target;
-        const originalText = btn.innerText;
-        btn.innerText = "⏳ Gerando...";
-        btn.disabled = true;
-
-        let backupData = {
-            atendimentos: [],
-            equipe: [],
-            auditoria: []
-        };
-
-        const atendimentosSnap = await db.collection("atendimentos").get();
-        atendimentosSnap.forEach(doc => backupData.atendimentos.push({ id: doc.id, ...doc.data() }));
-
-        const equipeSnap = await db.collection("equipe").get();
-        equipeSnap.forEach(doc => backupData.equipe.push({ id: doc.id, ...doc.data() }));
-
-        const auditoriaSnap = await db.collection("auditoria").get();
-        auditoriaSnap.forEach(doc => backupData.auditoria.push({ id: doc.id, ...doc.data() }));
-
-        const blob = new Blob([JSON.stringify(backupData)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const date = new Date().toISOString().slice(0,10);
-        a.download = `backup_funeraria_${date}.json`;
-        document.body.appendChild(a);
-        a.click();
-        URL.revokeObjectURL(url);
-        a.remove();
-        
-        btn.innerText = originalText;
-        btn.disabled = false;
-    } catch (e) {
-        console.error("Erro no backup:", e);
-        alert("Erro ao gerar backup.");
-    }
-}
-
-window.restaurarBackup = function() {
-    const fileInput = document.getElementById('file-restore');
-    const file = fileInput.files[0];
-    if (!file) {
-        alert("Por favor, selecione um arquivo de backup (.json).");
-        return;
-    }
-
-    if (!confirm("⚠️ ATENÇÃO! Isso irá RESTAURAR o banco de dados. Registros com o mesmo ID serão sobrescritos. Deseja continuar?")) {
-        return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = async function(e) {
-        try {
-            const backupData = JSON.parse(e.target.result);
-            const db = getDB();
-            let count = 0;
-
-            const restaurarColecao = async (nomeColecao, dados) => {
-                if (dados && dados.length > 0) {
-                    for (let item of dados) {
-                        const id = item.id;
-                        delete item.id; 
-                        await db.collection(nomeColecao).doc(id).set(item);
-                        count++;
-                    }
-                }
-            };
-
-            await restaurarColecao("atendimentos", backupData.atendimentos);
-            await restaurarColecao("equipe", backupData.equipe);
-            await restaurarColecao("auditoria", backupData.auditoria);
-
-            alert(`Restaurado com sucesso! ${count} registros processados.`);
-            fileInput.value = ""; 
-        } catch (error) {
-            console.error("Erro ao restaurar:", error);
-            alert("Erro ao ler o arquivo. Certifique-se de que é um backup válido.");
-        }
-    };
-    reader.readAsText(file);
-}
-
-// --- GERENCIAMENTO DE EQUIPE (NOVO DESIGN BASEADO NA IMAGEM) ---
-window.listarEquipe = function() {
-    const database = getDB();
-    const ul = document.getElementById('lista-equipe');
-    if(!database || !ul) return;
-    
-    equipeUnsubscribe = database.collection("equipe").orderBy("nome").onSnapshot(snap => {
-        ul.innerHTML = '';
-        snap.forEach(doc => {
-            const u = doc.data();
-            
-            // Lógica para capturar as Iniciais do Nome
-            const names = (u.nome || 'Usuário').trim().split(' ');
-            let iniciais = names[0][0].toUpperCase();
-            if (names.length > 1) {
-                iniciais += names[names.length - 1][0].toUpperCase();
-            } else if (names[0].length > 1) {
-                iniciais += names[0][1].toUpperCase();
-            }
-
-            // Gerar cores baseadas no tamanho do nome
-            const colors = ['#e0f2fe', '#fef3c7', '#dcfce3', '#f3e8ff', '#ffe4e6', '#ccfbf1'];
-            const textColors = ['#0284c7', '#d97706', '#16a34a', '#9333ea', '#e11d48', '#0d9488'];
-            const colorIndex = (u.nome || '').length % colors.length;
-            const bgColor = colors[colorIndex];
-            const txtColor = textColors[colorIndex];
-
-            const emailText = u.email ? u.email : 'Sem e-mail';
-
-            ul.innerHTML += `
-            <li class="table-equipe-row">
-                <div class="col-user">
-                    <div class="avatar-circle" style="background-color: ${bgColor}; color: ${txtColor};">
-                        ${iniciais}
-                    </div>
-                    <div style="display: flex; flex-direction: column;">
-                        <span style="color:#1e293b; font-size:14px; font-weight:600;">${u.nome}</span>
-                        <span style="color:#94a3b8; font-size:12px;">${emailText}</span>
-                    </div>
-                </div>
-                <div class="col-login">${u.login}</div>
-                <div class="col-pass">
-                    <span style="letter-spacing: 2px;">••••••</span>
-                    <button class="btn-icon" style="background:#f8fafc; padding:6px; border-radius:50%; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center;" title="Visualizar Senha" onclick="alert('Senha: ${u.senha}')">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                    </button>
-                </div>
-                <div class="col-actions">
-                    <button class="btn-action-edit" onclick="window.editarFuncionario('${doc.id}')" title="Editar">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                    </button>
-                    <button class="btn-action-delete" onclick="window.excluirFuncionario('${doc.id}')" title="Excluir">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                    </button>
-                </div>
-            </li>`;
-        });
-    });
-}
-
-window.adicionarFuncionario = function() {
-    const nome = document.getElementById('novo-nome').value;
-    const login = document.getElementById('novo-login').value;
-    const email = document.getElementById('novo-email').value;
-    const senha = document.getElementById('nova-senha').value;
-    
-    if(!nome || !login || !senha) { 
-        alert("Preencha nome, login e senha."); 
-        return; 
-    }
-    
-    getDB().collection("equipe").add({ nome, login, email, senha })
-        .then(() => {
-            alert("Usuário adicionado!");
-            document.getElementById('novo-nome').value = ""; 
-            document.getElementById('novo-login').value = "";
-            document.getElementById('novo-email').value = ""; 
-            document.getElementById('nova-senha').value = "";
-        })
-        .catch(e => alert("Erro: " + e));
-}
-
-window.excluirFuncionario = function(id) { 
-    if(confirm("Tem certeza que deseja excluir este usuário?")) { 
-        getDB().collection("equipe").doc(id).delete(); 
-    } 
-}
-
-window.editarFuncionario = function(id) {
-    getDB().collection("equipe").doc(id).get().then(doc => {
-        if(doc.exists) {
-            const u = doc.data();
-            document.getElementById('edit-id').value = doc.id;
-            document.getElementById('edit-nome').value = u.nome;
-            document.getElementById('edit-login').value = u.login;
-            document.getElementById('edit-email').value = u.email;
-            document.getElementById('edit-senha').value = u.senha;
-            
-            document.getElementById('box-novo-usuario').classList.add('hidden');
-            document.getElementById('div-editar-usuario').classList.remove('hidden');
-        }
-    });
-}
-
-window.salvarEdicaoUsuario = function() {
-    const id = document.getElementById('edit-id').value;
-    const nome = document.getElementById('edit-nome').value;
-    const email = document.getElementById('edit-email').value;
-    const senha = document.getElementById('edit-senha').value;
-    
-    if(!nome || !senha) { 
-        alert("Nome e senha são obrigatórios."); 
-        return; 
-    }
-    
-    getDB().collection("equipe").doc(id).update({ nome, email, senha })
-        .then(() => { 
-            alert("Usuário atualizado!"); 
-            window.cancelarEdicao(); 
-        })
-        .catch(e => alert("Erro: " + e));
-}
-
-window.cancelarEdicao = function() {
-    document.getElementById('edit-id').value = ""; 
-    document.getElementById('edit-nome').value = "";
-    document.getElementById('edit-login').value = ""; 
-    document.getElementById('edit-email').value = ""; 
-    document.getElementById('edit-senha').value = "";
-    
-    document.getElementById('div-editar-usuario').classList.add('hidden'); 
-    document.getElementById('box-novo-usuario').classList.remove('hidden');
-}
-
-// --- MODAIS E AÇÕES PRINCIPAIS ---
-window.abrirModal = function() {
-    document.getElementById('form-atendimento').reset();
-    document.getElementById('docId').value = ""; 
-    document.getElementById('protocolo_hidden').value = "";
-    document.getElementById('div-motivo-edicao').classList.add('hidden');
-    
-    if (usuarioLogado && usuarioLogado.nome) {
-        const elAtendente = document.getElementById('atendente_sistema');
-        if (elAtendente) elAtendente.value = usuarioLogado.nome;
-    }
-
-    const now = new Date();
-    const offset = now.getTimezoneOffset() * 60000;
-    document.getElementById('data_hora_atendimento').value = (new Date(now - offset)).toISOString().slice(0, 16);
-    
-    const fd = document.getElementById('filtro-data');
-    if(fd) document.getElementById('data_ficha_modal').value = fd.value;
-    
-    const chkInd = document.getElementById('chk_indigente');
-    if(chkInd) { 
-        chkInd.checked = false; 
-        window.toggleIndigente(); 
-    }
-
-    const chkMembro = document.getElementById('chk_membro');
-    const tipoMembroSelect = document.getElementById('tipo_membro_select');
-    if (chkMembro && tipoMembroSelect) {
-        chkMembro.checked = false;
-        tipoMembroSelect.disabled = true;
-        tipoMembroSelect.value = '';
-    }
-
-    safeDisplay('modal', 'block');
-}
-
-window.editar = function(id) {
-    const database = getDB();
-    if(!database) return;
-    
-    database.collection("atendimentos").doc(id).get().then(doc => {
-        if(doc.exists) {
-            const d = doc.data();
-            
-            for (let key in d) { 
-                const el = document.getElementById(key); 
-                if(el) el.value = d[key]; 
-            }
-            
-            document.getElementById('docId').value = doc.id;
-            document.getElementById('protocolo_hidden').value = d.protocolo;
-            document.getElementById('data_ficha_modal').value = d.data_ficha;
-            
-            ['tanato', 'invol', 'translado', 'urna_opc', 'membro'].forEach(k => { 
-                const chk = document.getElementById('chk_'+k); 
-                if(chk) chk.checked = (d[k] === 'SIM'); 
-            });
-            
-            const chkInd = document.getElementById('chk_indigente');
-            if(chkInd) { 
-                chkInd.checked = (d.indigente === 'SIM'); 
-                window.toggleIndigente(); 
-            }
-
-            const chkMembro = document.getElementById('chk_membro');
-            const tipoMembroSelect = document.getElementById('tipo_membro_select');
-            if(chkMembro && tipoMembroSelect) {
-                if(d.tipo_membro) {
-                    chkMembro.checked = true;
-                    tipoMembroSelect.disabled = false;
-                    tipoMembroSelect.value = d.tipo_membro;
-                } else {
-                    chkMembro.checked = false;
-                    tipoMembroSelect.disabled = true;
-                    tipoMembroSelect.value = '';
-                }
-            }
-
-            if(d.data_hora_atendimento) { 
-                document.getElementById('data_hora_atendimento').value = d.data_hora_atendimento; 
-            } else if(d.protocolo && d.protocolo.length >= 13) {
-                 const p = d.protocolo; 
-                 const y = p.substring(0,4), m = p.substring(4,6), day = p.substring(6,8); 
-                 const h = p.substring(9,11), min = p.substring(11,13);
-                 document.getElementById('data_hora_atendimento').value = `${y}-${m}-${day}T${h}:${min}`;
-            }
-            
-            const tipoSep = (d.tipo_sepultura || "").toUpperCase();
-            const divP = document.getElementById('div-perpetua');
-            if (tipoSep.includes('PERPETU')) divP.classList.remove('hidden'); 
-            else divP.classList.add('hidden');
-            
-            document.getElementById('div-motivo-edicao').classList.remove('hidden');
-            safeDisplay('modal', 'block');
-            
-            assinaturaResponsavelImg = d.assinatura_responsavel || null;
-            assinaturaAtendenteImg = d.assinatura_atendente || null;
-        }
-    });
-}
-
-window.fecharModal = function() { 
-    safeDisplay('modal', 'none'); 
-}
-
-const form = document.getElementById('form-atendimento');
-if(form) {
-    form.onsubmit = (e) => {
-        e.preventDefault();
-        const database = getDB();
-        const id = document.getElementById('docId').value;
-        const motivo = document.getElementById('motivo_edicao').value;
-        const tipoSep = document.getElementById('tipo_sepultura').value;
-        let dados = {};
-        
-        Array.from(form.elements).forEach(el => {
-            if(el.id && el.type !== 'submit' && el.type !== 'button') {
-                if(el.type === 'checkbox') dados[el.id.replace('chk_', '')] = el.checked ? 'SIM' : 'NAO';
-                else dados[el.id] = el.value;
-            }
-        });
-        
-        if(!dados.atendente_sistema && usuarioLogado) { 
-            dados.atendente_sistema = usuarioLogado.nome; 
-        }
-
-        const chkMembro = document.getElementById('chk_membro');
-        const tipoMembroSelect = document.getElementById('tipo_membro_select');
-        if(chkMembro && chkMembro.checked && tipoMembroSelect) {
-            dados.tipo_membro = tipoMembroSelect.value;
-        } else {
-            dados.tipo_membro = "";
-        }
-
-        dados.data_hora_atendimento = document.getElementById('data_hora_atendimento').value;
-        dados.data_ficha = document.getElementById('data_ficha_modal').value;
-        dados.local = document.getElementById('filtro-local').value;
-        dados.gav = tipoSep.includes('GAVETA') ? 'X' : '';
-        dados.car = tipoSep.includes('CARNEIRO') ? 'X' : '';
-        dados.cova_rasa = tipoSep.includes('COVA') ? 'X' : '';
-        dados.perpetua = (tipoSep.includes('PERPETUA') || tipoSep.includes('PERPETUO')) ? 'X' : '';
-        dados.indigente = document.getElementById('chk_indigente').checked ? 'SIM' : 'NAO';
-
-        if(!id && !dados.protocolo) dados.protocolo = window.gerarProtocolo();
-
-        if(id) {
-            if(!motivo) { 
-                alert("Motivo obrigatório na edição."); 
-                return; 
-            }
-            database.collection("auditoria").add({ 
-                data_log: new Date().toISOString(), 
-                usuario: usuarioLogado ? usuarioLogado.nome : 'Anon', 
-                acao: "EDIÇÃO", 
-                detalhe: `ID: ${id} | Motivo: ${motivo}` 
-            });
-            database.collection("atendimentos").doc(id).update(dados).then(() => window.fecharModal());
-        } else {
-             database.collection("auditoria").add({ 
-                 data_log: new Date().toISOString(), 
-                 usuario: usuarioLogado ? usuarioLogado.nome : 'Anon', 
-                 acao: "CRIAÇÃO", 
-                 detalhe: `Novo: ${dados.nome}` 
-            });
-            database.collection("atendimentos").add(dados).then(() => window.fecharModal());
-        }
-    }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    window.carregarListaHorarios();
-    
-    const chkIndigente = document.getElementById('chk_indigente');
-    if(chkIndigente) { 
-        chkIndigente.addEventListener('change', window.toggleIndigente); 
-    }
-
-    const chkMembro = document.getElementById('chk_membro');
-    const tipoMembroSelect = document.getElementById('tipo_membro_select');
-    if (chkMembro && tipoMembroSelect) {
-        chkMembro.addEventListener('change', function() {
-            tipoMembroSelect.disabled = !this.checked;
-            if (!this.checked) tipoMembroSelect.value = '';
-        });
-    }
-
-    const seletorCausas = document.getElementById('seletor_causas');
-    const inputCausa = document.getElementById('causa');
-    if (seletorCausas && inputCausa) { 
-        seletorCausas.addEventListener('change', function() { 
-            if (this.value) { 
-                if (inputCausa.value === "") { inputCausa.value = this.value; } 
-                else { inputCausa.value += " / " + this.value; } 
-                this.value = ""; 
-            } 
-        }); 
-    }
-    
-    const selectTipo = document.getElementById('tipo_sepultura');
-    if (selectTipo) { 
-        selectTipo.addEventListener('change', function() { 
-            const val = this.value.toUpperCase(); 
-            const divP = document.getElementById('div-perpetua'); 
-            if (val.includes('PERPETUA') || val.includes('PERPETUO')) { 
-                divP.classList.remove('hidden'); 
-            } else { 
-                divP.classList.add('hidden'); 
-            } 
-        }); 
-    }
-    
-    const fl = document.getElementById('filtro-local');
-    if(fl) fl.addEventListener('change', (e) => { 
-        window.atualizarListener(document.getElementById('filtro-data').value, e.target.value); 
-        window.atualizarLabelQuadra(e.target.value); 
-    });
-    
-    const sessao = sessionStorage.getItem('usuarioLogado');
-    if (sessao) { 
-        usuarioLogado = JSON.parse(sessao); 
-        safeDisplay('tela-bloqueio', 'none'); 
-        if(document.getElementById('filtro-local')) window.atualizarListener(window.pegarDataAtualLocal(), document.getElementById('filtro-local').value); 
-    }
-    
-    const fd = document.getElementById('filtro-data');
-    if(fd) fd.addEventListener('change', (e) => window.atualizarListener(e.target.value, document.getElementById('filtro-local').value));
 });
 
-window.visualizar = function(id) {
-    const database = getDB();
-    const modalView = document.getElementById('modal-visualizar');
-    if(!modalView || !database) return;
+const form = _el('form-atendimento');
+if(form) form.onsubmit = e => {
+    e.preventDefault(); const id = _val('docId'), d = {};
+    Array.from(form.elements).forEach(el => { if(el.id && el.type!=='submit' && el.type!=='button') d[el.id] = (el.tagName==='SELECT' && el.multiple) ? Array.from(el.selectedOptions).map(o=>o.value).join(', ') : el.value; });
+    if(!id) { d.data_registro = new Date().toISOString(); d.protocolo = window.gerarProtocolo(); }
+    getDB().collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado?.nome||'Anon', acao: id?"EDIÇÃO":"CRIAÇÃO", detalhe: `Protocolo: ${d.protocolo} | Falecido: ${d.nome_falecido}`, sistema: "Exumacao" });
+    if(id) getDB().collection("requerimentos_exumacao").doc(id).update(d).then(() => window.fecharModal()); else getDB().collection("requerimentos_exumacao").add(d).then(() => window.fecharModal());
+}
+
+// --- TEXTO REFERENTE A (INTELIGÊNCIA AUTOMÁTICA) ---
+window.preencherReferenteAutomatico = () => { if (window.dadosLiberacaoAtual) _setVal('referente_a', window.gerarTextoReferenteA(window.dadosLiberacaoAtual)); else alert("Aguarde os dados carregarem..."); }
+window.gerarTextoReferenteA = d => {
+    let s = d.servico_requerido?.toUpperCase()||"", sArr = s.split(',').map(x=>x.trim()).filter(x=>x), sProc = [];
+    const up = t => t ? t.toUpperCase() : '', dt = formatarDataInversa(d.data_sepultamento)||"(DATA)", fal = up(d.nome_falecido)||"(NOME)", ts = up(d.tipo_sepultura)||"(TIPO DE SEPULTURA)", sep = d.sepul||"XXX", qd = d.qd ? `DA QUADRA ${up(d.qd)}` : "", cemO = d.cemiterio==="OUTRO" ? up(d.cemiterio_outro)||"(OUTRO)" : up(d.cemiterio)||"(CEM. ORIGEM)", cemD = up(d.cemiterio_destino)||"(CEM. DESTINO)", lacre = d.lacre||"", dTipo = up(d.destino_tipo_sepultura)||"(TIPO DESTINO)", dNro = d.destino_local_nro||"XXX", dLiv = d.destino_livro||"X", dFls = d.destino_fls||"X", dProp = up(d.destino_proprietario)||"(NOME DONO)", pOrig = up(d.proprietario)||"(NOME DONO)", proc = d.processo||"XXX/XXX", ass = up(d.assunto)||"(MOTIVO)", sRef = up(d.servico_reforma)||"MÁRMORE OU GRANITO";
+    let tp = "", te = [];
     
-    assinaturaResponsavelImg = null;
-    assinaturaAtendenteImg = null;
-
-    database.collection("atendimentos").doc(id).get().then(doc => {
-        if(doc.exists) {
-            const d = doc.data();
-            d.id = doc.id; 
-            dadosAtendimentoAtual = d;
-            
-            if(d.assinatura_responsavel) assinaturaResponsavelImg = d.assinatura_responsavel;
-            if(d.assinatura_atendente) assinaturaAtendenteImg = d.assinatura_atendente;
-
-            const map = {
-                'view_protocolo': d.protocolo, 
-                'view_hora': d.hora, 
-                'view_nome': d.nome, 
-                'view_causa': d.causa, 
-                'view_resp_completo': d.resp_nome + (d.parentesco ? ` (${d.parentesco})` : ''), 
-                'view_telefone': d.telefone, 
-                'view_funeraria': d.funeraria, 
-                'view_atendente': d.atendente_sistema, 
-                'view_combo_urna': d.combo_urna, 
-                'view_hospital_completo': d.hospital, 
-                'view_cap': d.cap, 
-                'view_urna_info': d.urna_info
-            };
-            
-            for(let k in map) { 
-                const el = document.getElementById(k); 
-                if(el) el.innerText = map[k] || '-'; 
-            }
-            
-            let localSep = `Tipo: ${d.tipo_sepultura || ''} | Nº: ${d.sepul||''} | QD: ${d.qd||''}`;
-            if(d.tipo_sepultura && d.tipo_sepultura.toUpperCase().includes('PERPETU')) { 
-                localSep += ` (L: ${d.livro_perpetua||'-'} F: ${d.folha_perpetua||'-'})`; 
-            }
-            if(document.getElementById('view_local_sepul')) document.getElementById('view_local_sepul').innerText = localSep;
-            
-            let dtObitoF = d.data_obito ? d.data_obito.split('-').reverse().join('/') : '';
-            let hrObitoF = d.hora_obito || '';
-            if(d.ignorar_hora_obito === 'SIM') hrObitoF += ' (IGNORADO)';
-            if(document.getElementById('view_data_obito')) document.getElementById('view_data_obito').innerText = `${dtObitoF} às ${hrObitoF}`;
-            
-            let dataHoraFinal = "";
-            if (d.data_hora_atendimento) { 
-                const date = new Date(d.data_hora_atendimento); 
-                dataHoraFinal = `${date.getDate().toString().padStart(2,'0')}/${(date.getMonth()+1).toString().padStart(2,'0')}/${date.getFullYear()} AS ${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}`; 
-            } else if (d.protocolo && d.protocolo.length >= 13) { 
-                const p = d.protocolo; 
-                if(p.indexOf('-') === 8) { 
-                    dataHoraFinal = `${p.substring(6,8)}/${p.substring(4,6)}/${p.substring(0,4)} AS ${p.substring(9,11)}:${p.substring(11,13)}`; 
-                } 
-            }
-            if(document.getElementById('view_data_registro')) document.getElementById('view_data_registro').innerText = dataHoraFinal;
-            
-            const mapContainer = document.getElementById('view_map_container'); 
-            const mapFrame = document.getElementById('mapa-frame'); 
-            const mapLink = document.getElementById('link-gps');
-            if (mapContainer && mapFrame && mapLink) { 
-                const cleanCoords = d.geo_coords ? d.geo_coords.replace(/\s/g, '') : ''; 
-                if (cleanCoords && cleanCoords.includes(',')) { 
-                    mapContainer.style.display = 'block'; 
-                    mapFrame.innerHTML = `<iframe width="100%" height="100%" frameborder="0" style="border:0" src="https://maps.google.com/maps?q=${cleanCoords}&z=17&output=embed"></iframe>`; 
-                    mapLink.href = `https://www.google.com/maps?q=${cleanCoords}`; 
-                } else { 
-                    mapContainer.style.display = 'none'; 
-                } 
-            }
-            safeDisplay('modal-visualizar', 'block');
+    if (s.includes("EXUMAÇÃO") && s.includes("SAÍDA DE OSSOS")) { tp = `EXUMAÇÃO E SAÍDA DE OSSOS DA ${ts} N° ${sep} ${qd} ONDE FOI INUMADO ${fal} NO DIA ${dt} DO CEMITÉRIO MUNICIPAL ${cemO} PARA O CEMITÉRIO ${cemD}`; sProc.push("EXUMAÇÃO", "SAÍDA DE OSSOS"); }
+    else if (s.includes("EXUMAÇÃO") && s.includes("RECOLHIMENTO")) { tp = !d.destino_local_nro && (d.processo||!d.destino_tipo_sepultura) ? `EXUMAÇÃO DA ${ts} N° ${sep} ${qd} ONDE FOI INUMADO ${fal} NO DIA ${dt} E RECOLHER AO NICHO A SER ADQUIRIDO ATRAVÉS DO PROCESSO N° ${proc} NO CEMITÉRIO MUNICIPAL ${cemD!=='(CEM. DESTINO)'?cemD:cemO}` : dTipo===ts && dNro===sep ? `EXUMAÇÃO DA ${ts} PERPÉTUA N° ${sep} ${qd} ONDE FOI INUMADO ${fal} NO DIA ${dt} E RECOLHER A PRÓPRIA SEPULTURA REGISTRADA NO LIVRO ${dLiv} AS FOLHAS N° ${dFls} EM NOME DE ${pOrig} NO CEMITÉRIO MUNICIPAL ${cemO}` : `EXUMAÇÃO DA ${ts} N° ${sep} ${qd} ONDE FOI INUMADO ${fal} NO DIA ${dt} E RECOLHER AO ${dTipo} PERPÉTUO N° ${dNro} REGISTRADO NO LIVRO ${dLiv} AS FOLHAS N° ${dFls} EM NOME DE ${dProp} NO CEMITÉRIO MUNICIPAL ${cemD!=='(CEM. DESTINO)'?cemD:cemO}`; sProc.push("EXUMAÇÃO", "RECOLHIMENTO"); }
+    else if (s.includes("EXUMAÇÃO") && s.includes("PERMISSÃO DE USO")) { tp = `EXUMAÇÃO DA ${ts} N° ${sep} ${qd} ONDE FOI INUMADO ${fal} NO DIA ${dt} E PERMISSÃO DE USO DE 1 (UM) NICHO NO CEMITÉRIO MUNICIPAL ${cemD!=='(CEM. DESTINO)'?cemD:cemO}`; sProc.push("EXUMAÇÃO", "PERMISSÃO DE USO"); }
+    else if ((s.includes("ENTRADA DE OSSOS") || s.includes("ENTRADA DE CINZAS")) && s.includes("PERMISSÃO DE USO")) { tp = `ENTRADA DE OSSOS/CINZAS DE ${fal} VINDAS DO CEMITÉRIO ${cemO} E PERMISSÃO DE USO DE 1 (UM) NICHO NO CEMITÉRIO MUNICIPAL ${cemD!=='(CEM. DESTINO)'?cemD:"(CEMITÉRIO)"}`; sProc.push("ENTRADA DE OSSOS / CINZAS", "PERMISSÃO DE USO"); }
+    else if ((s.includes("ENTRADA DE OSSOS") || s.includes("ENTRADA DE CINZAS")) && s.includes("RECOLHIMENTO")) { tp = `ENTRADA DE OSSOS/CINZAS DE ${fal} VINDAS DO CEMITÉRIO ${cemO} E RECOLHER AO ${dTipo} PERPÉTUO N° ${dNro} REGISTRADO NO LIVRO ${dLiv} AS FOLHAS N° ${dFls} EM NOME DE ${dProp} NO CEMITÉRIO MUNICIPAL ${cemD!=='(CEM. DESTINO)'?cemD:"(CEMITÉRIO)"}`; sProc.push("ENTRADA DE OSSOS / CINZAS", "RECOLHIMENTO"); }
+    else if (s.includes("RECOLHIMENTO") && lacre!=="") { tp = `RECOLHIMENTO DOS RESTOS MORTAIS DE ${fal} IDENTIFICADOS PELO LACRE ${lacre} QUE SE ENCONTRAVAM NA ${ts} N° ${sep} AO ${dTipo} PERPÉTUO N° ${dNro} REGISTRADO NO LIVRO ${dLiv} AS FOLHAS N° ${dFls} EM NOME DE ${dProp} NO CEMITÉRIO MUNICIPAL ${cemD!=='(CEM. DESTINO)'?cemD:cemO}`; sProc.push("RECOLHIMENTO"); }
+    else if (s.includes("PERMUTA")) { tp = `PERMUTA DA SEPULTURA/NICHO PERPÉTUO N° ${sep} POR MOTIVO DE ${ass} REGISTRADO NO LIVRO ${dLiv!=='X'?dLiv:(d.livro||'X')} AS FOLHAS N° ${dFls!=='X'?dFls:(d.fls||'X')} EM NOME DE ${pOrig} POR OUTRA VAGA NO CEMITÉRIO MUNICIPAL ${cemD!=='(CEM. DESTINO)'?cemD:cemO}`; sProc.push("PERMUTA"); }
+    
+    sArr.forEach(srv => {
+        if(!sProc.some(p => srv===p || p.includes(srv))) {
+            if(srv.includes("LICENÇA COM ÔNUS")) te.push(dNro!=="XXX"||sep!=="XXX" ? `LICENÇA COM ÔNUS PARA COLOCAÇÃO DE LÁPIDE DE IDENTIFICAÇÃO EM MÁRMORE OU GRANITO COM INSCRIÇÕES DE NOME, FOTO E DATA NO ${dTipo!=='(TIPO DESTINO)'?dTipo:ts} PERPÉTUO N° ${dNro!=='XXX'?dNro:sep} REGISTRADO NO LIVRO ${dLiv!=='X'?dLiv:'(LIVRO)'} AS FOLHAS N° ${dFls!=='X'?dFls:'(FLS)'} EM NOME DE ${dProp!=='(NOME DO DONO)'?dProp:pOrig} NO CEMITÉRIO MUNICIPAL ${cemO}` : `LICENÇA COM ÔNUS PARA COLOCAÇÃO DE LÁPIDE DE IDENTIFICAÇÃO EM MÁRMORE OU GRANITO COM INSCRIÇÕES DE NOME, FOTO E DATA NO NICHO A SER ADQUIRIDO ATRAVÉS DO PROCESSO N° ${proc} NO CEMITÉRIO MUNICIPAL ${cemO}`);
+            else if(srv.includes("REVESTIMENTO")||srv.includes("REFORMA")) te.push(`SERVIÇO EM ${sRef} NA ${ts} PERPÉTUA N° ${sep} REGISTRADO NO LIVRO ${dLiv!=='X'?dLiv:(d.livro||'X')} AS FOLHAS N° ${dFls!=='X'?dFls:(d.fls||'X')} EM NOME DE ${pOrig} NO CEMITÉRIO MUNICIPAL ${cemO}`);
+            else if(srv.includes("CERTIDÃO DE PERMISSÃO")) te.push(`CERTIDÃO DE PERMISSÃO DE USO DA ${ts} N° ${sep} ONDE SE ENCONTRAM OS RESTOS MORTAIS DE ${fal} NO CEMITÉRIO MUNICIPAL ${cemO}`);
+            else if(srv==="CERTIDÃO") te.push(`EMISSÃO DE CERTIDÃO REFERENTE AO(A) FALECIDO(A) ${fal} INUMADO NA ${ts} N° ${sep} ${qd} NO CEMITÉRIO MUNICIPAL ${cemO}`);
+            else if(srv==="PERMISSÃO DE USO") te.push(`PERMISSÃO DE USO DE 1 (UM) ${ts} NO CEMITÉRIO MUNICIPAL ${cemO}`);
+            else if(srv==="EXUMAÇÃO" && !tp) tp = `EXUMAÇÃO DO(A) FALECIDO(A) ${fal} INUMADO(A) NO DIA ${dt} NA ${ts} N° ${sep} ${qd} NO CEMITÉRIO MUNICIPAL ${cemO}`;
+            else if(srv==="SAÍDA DE OSSOS" && !tp) tp = `SAÍDA DE OSSOS DO(A) FALECIDO(A) ${fal} DA ${ts} N° ${sep} ${qd} DO CEMITÉRIO MUNICIPAL ${cemO} PARA O CEMITÉRIO ${cemD}`;
+            else if(srv==="RECOLHIMENTO" && !tp) tp = `RECOLHIMENTO DE RESTOS MORTAIS DO(A) FALECIDO(A) ${fal} DA ${ts} N° ${sep} ${qd} DO CEMITÉRIO MUNICIPAL ${cemO}`;
+            else if((srv==="ENTRADA DE OSSOS / CINZAS") && !tp) tp = `${srv} DO(A) FALECIDO(A) ${fal} VINDAS DO CEMITÉRIO ${cemO} PARA O CEMITÉRIO MUNICIPAL ${cemD}`;
+            else if(srv==="OUTROS") te.push(`DIVERSOS/OUTROS SERVIÇOS REFERENTE A ${fal} NA ${ts} N° ${sep} NO CEMITÉRIO MUNICIPAL ${cemO}`);
+            else { if(!tp) tp=`${srv} DO(A) FALECIDO(A) ${fal} NA ${ts} N° ${sep} NO CEMITÉRIO MUNICIPAL ${cemO}`; else te.push(srv); }
         }
     });
+    return (tp ? tp + (te.length ? " E " + te.join(" E ") : "") : (te.length ? te.join(" E ") : `REFERENTE A ${s.replace(/, /g,' E ')} DO(A) FALECIDO(A) ${fal} NA ${ts} N° ${sep} ${qd} NO CEMITÉRIO MUNICIPAL ${cemO}`)).replace(/\s+/g, ' ').trim() + ".";
 }
 
-window.fecharModalVisualizar = function() { safeDisplay('modal-visualizar', 'none'); };
-window.fecharModalEstatisticas = function() { safeDisplay('modal-estatisticas', 'none'); };
-window.alternarDesign = function() { document.body.classList.toggle('design-classico'); };
+window.abrirLiberacao = id => getDB().collection("requerimentos_exumacao").doc(id).get().then(doc => { if(doc.exists) { const d=doc.data(); d.id=doc.id; window.dadosLiberacaoAtual=d; _setVal('docIdLiberacao', doc.id); _setVal('processo_lib', d.processo); _setVal('grm_lib', d.grm); _setVal('valor_pago', d.valor_pago); _setVal('referente_a', d.referente_a || window.gerarTextoReferenteA(d)); safeDisplay('modal-liberacao', 'block'); }});
+window.fecharModalLiberacao = () => { safeDisplay('modal-liberacao', 'none'); window.dadosLiberacaoAtual = null; }
+const formLib = _el('form-liberacao');
+if(formLib) formLib.onsubmit = e => { e.preventDefault(); const id=_val('docIdLiberacao'), dadosL={processo:_val('processo_lib'),grm:_val('grm_lib'),valor_pago:_val('valor_pago'),referente_a:_val('referente_a')}; if(id){ getDB().collection("auditoria").add({data_log:new Date().toISOString(),usuario:usuarioLogado?.nome||'Anon',acao:"LIBERAÇÃO",detalhe:`Req ID: ${id} | GRM: ${dadosL.grm}`,sistema:"Exumacao"}); getDB().collection("requerimentos_exumacao").doc(id).update(dadosL).then(()=>window.fecharModalLiberacao()); } }
 
-window.imprimirRelatorio = function(modo) { 
-    const style = document.createElement('style'); 
-    style.innerHTML = `@page { size: ${modo}; }`; 
-    document.head.appendChild(style); 
-    window.print(); 
-    setTimeout(() => document.head.removeChild(style), 1000); 
-};
+// --- EVENTOS E IMPRESSÕES ---
+window.onclick = e => { if(e.target===_el('modal-visualizar')) window.fecharModalVisualizar(); if(e.target===_el('modal-admin')) window.fecharModalAdmin(); if(e.target===_el('modal-unir')) window.fecharModalUnir(); }
+document.addEventListener('DOMContentLoaded', () => { if(_el('filtro-data')) _el('filtro-data').addEventListener('change', window.carregarTabela); const s=sessionStorage.getItem('usuarioLogado'); if(s) window.liberarAcesso(JSON.parse(s)); });
 
-window.excluir = function(id) { 
-    if(confirm('Tem certeza?')) { 
-        getDB().collection("atendimentos").doc(id).delete(); 
-    } 
-};
-
-window.onclick = function(event) { 
-    const t = event.target; 
-    if (t == document.getElementById('modal-visualizar')) window.fecharModalVisualizar(); 
-    if (t == document.getElementById('modal-estatisticas')) window.fecharModalEstatisticas(); 
-    if (t == document.getElementById('modal-equipe')) window.fecharModalEquipe(); 
-    if (t == document.getElementById('modal-admin')) window.fecharModalAdmin(); 
-}
-
-window.fazerLogout = function() { 
-    sessionStorage.removeItem('usuarioLogado'); 
-    window.location.reload(); 
-}
-
-window.checarLoginEnter = function(e) { 
-    if(e.key==='Enter') window.fazerLogin(); 
-}
-
-window.bloquearTela = function() { 
-    const t = document.getElementById('tela-bloqueio'); 
-    if(t) t.style.display = 'flex'; 
-}
-
-window.gerarEtiqueta = function() { 
-    if (!dadosAtendimentoAtual) return; 
-    const d = dadosAtendimentoAtual; 
-    const fd = (dataStr) => { if (!dataStr) return ""; const p = dataStr.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }; 
-    const dataF = fd(d.data_ficha); 
-    const h = `<html><head><style>@page{size:landscape;margin:0}body{font-family:Arial,sans-serif;margin:0;padding:0;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center;overflow:hidden}.box{width:95vw;height:90vh;border:5px solid #000;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:space-evenly;text-align:center;padding:10px}.header-img{max-height:100px;margin-bottom:10px}.title{font-size:24px;font-weight:900;text-transform:uppercase;border-bottom:3px solid #000;padding-bottom:5px;display:inline-block;margin-bottom:30px}.group{margin-bottom:30px;width:100%}.label{font-size:18px;color:#333;font-weight:bold;text-transform:uppercase;margin-bottom:5px}.val-nome{font-size:55px;font-weight:900;text-transform:uppercase;line-height:1.1}.val-data{font-size:40px;font-weight:800}.val-local{font-size:35px;font-weight:800;text-transform:uppercase}</style></head><body><div class="box"><div><img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" class="header-img"><br><div class="title">IDENTIFICAÇÃO DE VELÓRIO</div></div><div class="group"><div class="label">FALECIDO(A)</div><div class="val-nome">${d.nome}</div></div><div class="group"><div class="label">SEPULTAMENTO</div><div class="val-data">${dataF} às ${d.hora}</div></div><div class="group"><div class="label">LOCAL</div><div class="val-local">${d.cap}<br>${d.local || "CEMITÉRIO DO MARUÍ"}</div></div></div><script>window.onload=function(){setTimeout(function(){window.print()},500)}</script></body></html>`; 
-    const w = window.open('','_blank'); 
-    if(w) { w.document.write(h); w.document.close(); } 
-}
-
-window.enviarWhatsapp = function() { 
-    if (!dadosAtendimentoAtual) return; 
-    const t = dadosAtendimentoAtual.telefone ? dadosAtendimentoAtual.telefone.replace(/\D/g, '') : ''; 
-    const c = dadosAtendimentoAtual.geo_coords ? dadosAtendimentoAtual.geo_coords.replace(/\s/g, '') : ''; 
-    if (!t) { alert("Sem telefone."); return; } 
-    if (!c) { alert("Sem GPS."); return; } 
-    window.open(`https://api.whatsapp.com/send?phone=55${t}&text=${encodeURIComponent('Localização da Sepultura: https://maps.google.com/maps?q=$' + c)}`, '_blank'); 
-}
-
-window.enviarSMS = function() { 
-    if (!dadosAtendimentoAtual) return; 
-    const t = dadosAtendimentoAtual.telefone ? dadosAtendimentoAtual.telefone.replace(/\D/g, '') : ''; 
-    const c = dadosAtendimentoAtual.geo_coords ? dadosAtendimentoAtual.geo_coords.replace(/\s/g, '') : ''; 
-    if (!t) { alert("Sem telefone."); return; } 
-    window.location.href = `sms:55${t}?body=${encodeURIComponent('Localização da Sepultura: https://maps.google.com/maps?q=$' + c)}`; 
-}
-
-// --- GERAR COMPROVANTE ---
-window.gerarComprovante = function() {
-    if (!dadosAtendimentoAtual) return;
-    const d = dadosAtendimentoAtual;
-    const chk = (cond) => cond ? '(X)' : '( )';
-    const fd = (dataStr) => { if (!dataStr) return ""; const p = dataStr.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; };
-    
-    const p = d.protocolo || "";
-    let dataHoraAtendimentoTexto = "";
-    
-    if (d.data_hora_atendimento) {
-        const dateObj = new Date(d.data_hora_atendimento);
-        dataHoraAtendimentoTexto = `${dateObj.getDate().toString().padStart(2,'0')}/${(dateObj.getMonth()+1).toString().padStart(2,'0')}/${dateObj.getFullYear()} AS ${dateObj.getHours().toString().padStart(2,'0')}:${dateObj.getMinutes().toString().padStart(2,'0')}`;
-    } else { 
-        const now = new Date(); 
-        dataHoraAtendimentoTexto = `${now.getDate().toString().padStart(2,'0')}/${(now.getMonth()+1).toString().padStart(2,'0')}/${now.getFullYear()} AS ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`; 
+window.visualizarDocumentos = id => getDB().collection("requerimentos_exumacao").doc(id).get().then(doc => {
+    if(doc.exists) {
+        let d = doc.data(); d.id = doc.id; dadosAtendimentoAtual = d;
+        assinaturaResponsavelImg = d.assinatura_responsavel||null; assinaturaAtendenteImg = d.assinatura_atendente||null;
+        let cemD = d.cemiterio==='OUTRO' ? d.cemiterio_outro : d.cemiterio;
+        if(_el('resumo-dados')) _el('resumo-dados').innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;"><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Protocolo</span><br><strong style="color:var(--primary-color);font-size:14px;">${d.protocolo||'N/A'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Requerente</span><br><strong style="font-size:14px;">${d.resp_nome?.toUpperCase()||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Falecido(a)</span><br><strong style="font-size:14px;">${d.nome_falecido?.toUpperCase()||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Cemitério / Serviço</span><br><strong>${cemD?.toUpperCase()||'-'} (${d.servico_requerido?.toUpperCase()||'-'})</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Localização Sepultura</span><br><strong>Nº ${d.sepul||'-'} / QD ${d.qd||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Administrativo</span><br><strong style="color:var(--danger);">Proc: ${d.processo||'-'} / GRM: ${d.grm||'-'}</strong></div><div style="grid-column:span 3;text-align:center;margin-top:5px;"><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Status de Assinatura</span><br><strong>${d.assinatura_responsavel?'✅ Família Assinou':'⏳ Aguardando Família'} | ${d.assinatura_atendente?'✅ Equipe Assinou':'⏳ Aguardando Equipe'}</strong></div></div>`;
+        safeDisplay('modal-visualizar', 'block');
     }
+});
+
+const getPrintStyle = (c='') => `<style>@page{size:A4 portrait;margin:15mm}body{font-family:Arial,sans-serif;font-size:14px;line-height:1.4;color:#000;position:relative;-webkit-print-color-adjust:exact;print-color-adjust:exact}.watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;opacity:.1;z-index:-1;pointer-events:none}.header{text-align:center;margin-bottom:10px;border-bottom:2px solid #333;padding-bottom:5px;position:relative}.header img.logo-print{height:50px}.header-subtitle{font-size:12px;font-weight:bold;margin-top:5px;text-transform:uppercase}.doc-title{font-size:17px;font-weight:bold;text-align:center;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px}.section{margin-bottom:10px;border:1px solid #ccc;padding:8px;border-radius:4px}.section-title{font-weight:bold;font-size:12px;background-color:#f0f0f0;padding:4px 8px;margin:-8px -8px 8px -8px;border-bottom:1px solid #ccc;border-radius:4px 4px 0 0;text-transform:uppercase;color:#333}.row{display:flex;margin-bottom:6px;gap:15px}.field{display:flex;flex-direction:column;flex:1}.label{font-size:10px;color:#666;font-weight:bold;text-transform:uppercase;margin-bottom:2px}.value{font-size:14px;font-weight:bold;border-bottom:1px solid #000;padding-top:2px;padding-bottom:2px;min-height:16px}.chk-item{font-weight:bold;font-size:14px}.footer-note{font-size:11px;text-align:justify;margin-top:15px;padding:8px;border:1px dashed #999;background-color:#f9f9f9;border-radius:4px;line-height:1.5}.box-protocolo{position:absolute;top:0;right:0;border:2px solid #000;padding:4px 8px;font-weight:bold;font-size:12px;font-family:sans-serif;background:#fff;text-align:left}.legal{font-size:9px;text-align:center;margin-top:15px;font-weight:bold;color:#444}${c}</style>`;
+const upper = s => s ? s.toUpperCase() : '-';
+
+window.imprimirRequerimento = () => {
+    if (!dadosAtendimentoAtual) return; const d = dadosAtendimentoAtual;
+    let tSep = d.tipo_sepultura; if(tSep==='Nicho perpétuo' || tSep==='Sep perpétua') tSep += ' nº ____ L nº ____ Fls nº ____';
+    const dr = d.data_registro ? new Date(d.data_registro) : new Date(), dtxt = `Niterói, ${dr.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dr.getMonth()]} de ${dr.getFullYear()}`;
+    const blR = assinaturaResponsavelImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaResponsavelImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
+    const blA = assinaturaAtendenteImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaAtendenteImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
+    let endC = upper(`${d.endereco}, Nº ${d.numero||'S/N'}`); if(d.complemento) endC += ` - ${upper(d.complemento)}`;
+    let tL = d.telefone||''; let i=2; while(d['telefone'+i]) { tL += ' / ' + d['telefone'+i]; i++; }
     
-    const im = (d.local && d.local.includes("MARUÍ")); 
-    const is = (d.local && d.local.includes("SÃO FRANCISCO")); 
-    const ii = (d.local && d.local.includes("ITAIPU")); 
-    const cc = (d.cap && !d.cap.toUpperCase().includes("SEM"));
+    const html = `<html><head><title>Requerimento Exumação</title>${getPrintStyle()}</head><body>
+        <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Bras%C3%A3o_de_Niter%C3%B3i%2C_RJ.svg" class="watermark">
+        <div class="header"><div class="box-protocolo">PROTOCOLO: ${d.protocolo||'N/A'} ${d.processo?`<br>PROCESSO: ${d.processo}`:''}</div><img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" class="logo-print"><div class="header-subtitle">Subsecretaria de Infraestrutura - SSINF<br>Coordenação dos Cemitérios de Niterói</div></div>
+        <div class="doc-title">Requerimento de Serviços Cemiteriais</div>
+        <div class="section"><div class="section-title">Dados do Requerente</div><div class="row"><div class="field" style="flex:2;"><span class="label">Nome Completo</span><span class="value">${upper(d.resp_nome)}</span></div><div class="field"><span class="label">Grau de Parentesco</span><span class="value">${upper(d.parentesco)}</span></div></div><div class="row"><div class="field" style="flex:2.5;"><span class="label">Endereço</span><span class="value">${endC}</span></div><div class="field" style="flex:0.5;"><span class="label">CEP</span><span class="value">${d.cep||'-'}</span></div></div><div class="row"><div class="field"><span class="label">Bairro</span><span class="value">${upper(d.bairro)}</span></div><div class="field"><span class="label">Município</span><span class="value">${upper(d.municipio)}</span></div><div class="field"><span class="label">Telefone(s)</span><span class="value">${tL}</span></div></div></div>
+        <div class="section"><div class="section-title">Dados do Falecido(a)</div><div class="row"><div class="field" style="flex:2;"><span class="label">Nome do(a) Falecido(a)</span><span class="value">${upper(d.nome_falecido)}</span></div><div class="field"><span class="label">Data de Sepultamento</span><span class="value">${formatarDataInversa(d.data_sepultamento)}</span></div><div class="field"><span class="label">Cemitério</span><span class="value">${d.cemiterio==='OUTRO'?upper(d.cemiterio_outro):upper(d.cemiterio)}</span></div></div></div>
+        <div class="section"><div class="section-title">Serviços Requeridos e Localização</div><div class="row"><div class="field"><div class="chk-item">( X ) ${upper(d.servico_requerido)}</div></div><div class="field"><div class="chk-item">( X ) ${upper(tSep)}</div></div></div><div class="row" style="margin-top:15px;"><div class="field"><span class="label">Nº da Sepultura</span><span class="value">${d.sepul}</span></div><div class="field"><span class="label">Quadra</span><span class="value">${upper(d.qd)}</span></div><div class="field" style="flex:2;"><span class="label">Proprietário (Se Perpétua)</span><span class="value">${upper(d.proprietario)}</span></div></div><div class="row" style="margin-top:10px;"><div class="field"><span class="label">Assunto / Observações</span><span class="value">${upper(d.assunto)}</span></div></div></div>
+        <div class="footer-note"><b>EM TEMPO:</b> Ao assinar este requerimento, declaro estar ciente que depois de passados <b>90 (noventa) dias</b> do deferimento desse procedimento administrativo, não havendo manifestação de minha parte para pagamento e realização do pleiteado, o processo será encerrado e arquivado, sendo considerado como desinteresse de minha parte; os restos mortais, quando for objeto do pedido, serão exumados e recolhidos ao ossuário geral. <br><br><b>OBS.: O comprovante de requerimento (protocolo) deverá ser apresentado no cemitério em até 24h após emissão.</b></div>
+        <div style="margin-top:10px; font-size:14px;">Nestes termos, peço deferimento.</div><div style="text-align:right; margin-top:5px; font-size:14px;"><b>${dtxt}</b></div>
+        <div style="display:flex; justify-content:space-around; margin-top:30px; text-align:center;"><div>${blA}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>${upper(d.atendente_sistema||'ATENDENTE')}</b><br><span style="font-size:11px; color:#555;">(Assinatura do Atendente)</span></div></div><div>${blR}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>${upper(d.resp_nome)}</b><br><span style="font-size:11px; color:#555;">(Assinatura do Requerente)</span></div></div></div>
+        <div class="legal">Art. 299 do Código Penal - Falsidade ideológica: Omitir, em documento público ou particular, declaração que dele devia constar, ou nele inserir ou fazer inserir declaração falsa ou diversa da que devia ser escrita, com o fim de prejudicar direito, criar obrigação ou alterar a verdade sobre fatos juridicamente relevante, é crime.</div>
+    </body><script>window.onload=()=>setTimeout(()=>window.print(),800)</script></html>`;
+    const w = window.open('','_blank'); w.document.write(html); w.document.close();
+}
+
+window.imprimirLiberacao = () => {
+    if (!dadosAtendimentoAtual) return; const d = dadosAtendimentoAtual;
+    const dr = d.data_registro ? new Date(d.data_registro) : new Date(), dtxt = `Niterói, ${dr.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dr.getMonth()]} de ${dr.getFullYear()}`;
+    let endC = upper(`${d.endereco}, Nº ${d.numero||'S/N'}`); if (d.complemento) endC += ` - ${upper(d.complemento)}`;
+    let tL = d.telefone||''; let i=2; while(d['telefone'+i]) { tL += ' / ' + d['telefone'+i]; i++; }
+    const blR = assinaturaResponsavelImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaResponsavelImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
+    const blA = assinaturaAtendenteImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaAtendenteImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
+
+    const html = `<html><head><title>Liberação</title>${getPrintStyle()}</head><body>
+        <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Bras%C3%A3o_de_Niter%C3%B3i%2C_RJ.svg" class="watermark">
+        <div class="header"><div class="box-protocolo">PROTOCOLO: ${d.protocolo||'N/A'}</div><img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" class="logo-print"><div class="header-subtitle">Secretaria de Mobilidade e Infraestrutura - SEMOBI<br>Subsecretaria de Infraestrutura - SSINF<br>Coordenação dos Cemitérios de Niterói</div></div>
+        <div class="doc-title">Liberação</div>
+        <div class="section"><div class="section-title">Dados Administrativos</div><div class="row"><div class="field"><span class="label">Processo Nº</span><span class="value">${d.processo||'-'}</span></div><div class="field"><span class="label">GRM Nº</span><span class="value">${d.grm||'-'}</span></div><div class="field"><span class="label">Quantia Paga (R$)</span><span class="value">${upper(d.valor_pago)}</span></div></div></div>
+        <div class="section"><div class="section-title">Dados do Requerente e Localização</div><div class="row"><div class="field" style="flex:2;"><span class="label">Nome do Requerente</span><span class="value">${upper(d.resp_nome)}</span></div><div class="field"><span class="label">Cemitério Municipal</span><span class="value">${d.cemiterio==='OUTRO'?upper(d.cemiterio_outro):upper(d.cemiterio)}</span></div></div><div class="row"><div class="field" style="flex:2.5;"><span class="label">Endereço</span><span class="value">${endC}</span></div><div class="field" style="flex:0.5;"><span class="label">CEP</span><span class="value">${d.cep||'-'}</span></div></div><div class="row"><div class="field"><span class="label">Bairro</span><span class="value">${upper(d.bairro)}</span></div><div class="field"><span class="label">Município</span><span class="value">${upper(d.municipio)}</span></div><div class="field"><span class="label">Telefone(s)</span><span class="value">${tL}</span></div></div></div>
+        <div class="section"><div class="section-title">Referente A</div><div class="row"><div class="field"><span class="value" style="border:none;text-align:justify;line-height:1.5;text-transform:uppercase;">${d.referente_a?d.referente_a.replace(/\n/g,'<br>'):'__________________________________________________________________________'}</span></div></div></div>
+        <div class="footer-note"><b>ESTOU CIENTE QUE O(A) REQUERENTE DEVERÁ COMPARECER NO DIA DA EXUMAÇÃO/ENTRADA E SAÍDA DE OSSOS__________________________________________</b><br><br><div style="text-align:center;text-decoration:underline;"><b>EXUMAÇÃO E ENTRADA/SAÍDA DE OSSOS SÃO FEITAS DE SEGUNDA A SEXTA DAS 8H ÀS 10H, EXCETO FERIADOS.</b></div></div>
+        <div style="margin-top:15px; text-align:right; font-size:14px;"><b>${dtxt}</b></div>
+        <div style="display:flex; justify-content:space-around; margin-top:40px; text-align:center;"><div>${blA}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>${upper(d.atendente_sistema||'ATENDENTE')}</b><br><span style="font-size:11px; color:#555;">Coordenação dos Cemitérios de Niterói</span></div></div><div>${blR}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>RESPONSÁVEL</b><br></div></div></div>
+        <div style="text-align:center; font-size:10px; color:#666; margin-top:30px;">Rua General Castrioto, 407 - Barreto - Niterói - 24110-256 - Tel.: 3513-6157</div>
+    </body><script>window.onload=()=>setTimeout(()=>window.print(),800)</script></html>`;
+    const w = window.open('','_blank'); w.document.write(html); w.document.close();
+}
+
+window.imprimirDeclaracao = () => {
+    if (!dadosAtendimentoAtual) return alert("Nenhum atendimento selecionado.");
+    const d = dadosAtendimentoAtual, tv = _val('select_declaracao');
+    const dr = d.data_registro ? new Date(d.data_registro) : new Date(), dtxt = `${dr.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dr.getMonth()]} de ${dr.getFullYear()}`;
+    const blR = assinaturaResponsavelImg ? `<div style="text-align:center;"><img src="${assinaturaResponsavelImg}" style="max-height:60px; margin-bottom:5px;"></div>` : `<div style="height:60px;"></div>`;
+    let endC = upper(d.endereco||'___________'); if (d.numero) endC += `, Nº ${d.numero}`;
+    let tL = d.telefone||''; let i=2; while(d['telefone'+i]) { tL += ' / ' + d['telefone'+i]; i++; }
+
+    const cpf=d.cpf||"___________", rg=d.rg||"___________", aut=d.autorizado||"O PRÓPRIO REQUERENTE", fal=upper(d.nome_falecido||"___________"), proc=d.processo||"___________", sO=d.sepul||"_____", qO=d.qd||"_____", tO=upper(d.tipo_sepultura||"___________"), cO=d.cemiterio==='OUTRO'?upper(d.cemiterio_outro||"___________"):upper(d.cemiterio||"___________"), cD=upper(d.cemiterio_destino||"___________"), dN=d.destino_local_nro||"_____", dL=d.destino_livro||"_____", dF=d.destino_fls||"_____", dP=upper(d.destino_proprietario||"___________"), lac=d.lacre||"___________", sR=d.servico_reforma||"___________", pO=upper(d.proprietario||'___________'), b = t => `<b>${t}</b>`;
     
-    let tempoDecorrido = ""; 
-    if (d.data_obito && d.hora_obito && d.hora && d.data_ficha) { 
-        const dtObito = new Date(d.data_obito + 'T' + d.hora_obito); 
-        const dtSepul = new Date(d.data_ficha + 'T' + d.hora); 
-        const diff = dtSepul - dtObito; 
-        if (diff > 0) { 
-            const diffHrs = Math.floor(diff / 3600000); 
-            const diffMins = Math.round(((diff % 3600000) / 60000)); 
-            tempoDecorrido = `${diffHrs}h ${diffMins}min`; 
-        } 
-    }
-    
-    const ec = d.estado_civil || ""; 
-    const chkEC = (val) => ec === val ? '(X)' : '( )'; 
-    const relacao = d.parentesco ? `(${d.parentesco})` : '';
-    
-    let txtSep = (d.tipo_sepultura || "").toUpperCase(); 
-    const co = d.classificacao_obito || "ADULTO"; 
-    let txtHoraObito = d.hora_obito; 
-    
-    if (d.ignorar_hora_obito === 'SIM') txtHoraObito += " (IGNORADO)"; 
-    let classificacao = co; 
-    if (txtSep.includes("ANJO")) classificacao = "ANJO";
-    
-    if (txtSep.includes("PERPETUA") || txtSep.includes("PERPETUO")) { 
-        txtSep = `${txtSep} (LIVRO: ${d.livro_perpetua||'-'} / FOLHA: ${d.folha_perpetua||'-'}) - ${classificacao}`; 
-    } else if (txtSep.includes("MEMBRO")) { 
-        txtSep = `MEMBRO AMPUTADO (${d.tipo_membro || d.tipo_membro_select || 'Não informado'})`; 
-    } else { 
-        txtSep = `${txtSep} - ${classificacao}`; 
-    }
-    
-    let dataExumacao = ""; 
-    if (d.data_ficha) { 
-        const parts = d.data_ficha.split('-'); 
-        let ano = parseInt(parts[0]); 
-        const mes = parts[1]; 
-        const dia = parts[2]; 
-        const addAnos = (d.classificacao_obito === 'ANJO') ? 2 : 3; 
-        dataExumacao = `${dia}/${mes}/${ano + addAnos}`; 
+    let tit = "", txt = "";
+    switch(tv) {
+        case "saida_nicho_perpetuo": tit="Saída de ossos do nicho perpétuo"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a retirar os restos mortais do(a) falecido(a) ${b(fal)} no nicho perpétuo nº ${b(sO)} registrado no livro nº ${b(dL)} as fls. ${b(dF)} em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)} para o Cemitério ${b(cD)}.`; break;
+        case "exumacao_saida": tit="Exumação e saída dos restos mortais"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a exumar os restos mortais do(a) falecido(a) ${b(fal)} na sepultura (tipo) ${b(tO)} nº ${b(sO)} qd ${b(qO)} que se encontra no Cemitério ${b(cO)} e saída dos ossos para o Cemitério ${b(cD)}.`; break;
+        case "exumacao_recolhimento_nicho_perp": tit="Exumação e recolhimento da ossada ao nicho perpétuo"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a exumar os restos mortais do(a) falecido(a) ${b(fal)} na sepultura (tipo) ${b(tO)} nº ${b(sO)} quadra ${b(qO)} que se encontra no Cemitério ${b(cO)} e recolher a ossada ao nicho perpétuo nº ${b(dN)} registrado no livro nº ${b(dL)} as fls. ${b(dF)} em nome de ${b(dP)} no Cemitério do ${b(cD)}.`; break;
+        case "exumacao_recolhimento_nicho_adq": tit="Exumação e recolhimento da ossada ao nicho a ser adquirido"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a exumar os restos mortais do(a) falecido(a) ${b(fal)} na sepultura (tipo) ${b(tO)} nº ${b(sO)} quadra ${b(qO)} que se encontra no Cemitério ${b(cO)} e recolher a ossada ao nicho a ser adquirido através do processo n° ${b(proc)} no Cemitério ${b(cD)}.`; break;
+        case "exumacao_recolhimento_sep_perp": tit="Exumação e recolhimento da ossada a sepultura perpétua"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a exumar os restos mortais do(a) falecido(a) ${b(fal)} que se encontra inumado na sepultura (tipo) ${b(tO)} nº ${b(sO)} qd ${b(qO)} no Cemitério ${b(cO)} e recolher a ossada a sepultura perpétua nº ${b(dN)} livro nº ${b(dL)} fls. nº ${b(dF)} em nome de ${b(dP)} no Cemitério do ${b(cD)}.`; break;
+        case "entrada_recolhimento_nicho_perp": tit="Entrada de restos mortais e recolhimento da ossada ao nicho perpétuo"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a transladar os restos mortais do(a) falecido(a) ${b(fal)} vindos do Cemitério ${b(cO)} e recolher a ossada ao nicho perpétuo nº ${b(dN)} livro nº ${b(dL)} fls nº ${b(dF)} no Cemitério do ${b(cD)}.`; break;
+        case "entrada_recolhimento_sep_perp": tit="Entrada de restos mortais e recolhimento da ossada a sepultura perpétua"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a transladar os restos mortais do(a) falecido(a) ${b(fal)} vindos do Cemitério ${b(cO)} e recolher a ossada a sepultura perpétua nº ${b(dN)} QD ${b(qO)} no Cemitério do ${b(cD)}.`; break;
+        case "entrada_permissao_nicho": tit="Entrada de restos mortais e permissão de uso de nicho"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a transladar os restos mortais do(a) falecido(a) ${b(fal)} vindos do Cemitério ${b(cO)} e permissão de uso de nicho no Cemitério do ${b(cD)}.`; break;
+        case "entrada_cinzas_sep_perp": tit="Entrada de cinzas e recolhimento a sepultura perpétua"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a transladar as cinzas do(a) falecido(a) ${b(fal)} vindos do Cemitério ${b(cO)} e recolher as cinzas a sepultura perpétua nº ${b(dN)} livro nº ${b(dL)} fls nº ${b(dF)} no Cemitério do ${b(cD)}.`; break;
+        case "entrada_cinzas_nicho_perp": tit="Entrada de cinzas e recolhimento da ossada ao nicho perpétuo"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a transladar as cinzas do (a) falecido (a) ${b(fal)} vindos do Cemitério ${b(cO)}, e recolher as cinzas ao nicho perpétuo nº ${b(dN)}, livro nº ${b(dL)}, fls nº ${b(dF)}, no Cemitério do ${b(cD)}.`; break;
+        case "saida_sep_perp": tit="Saída os ossos da sepultura perpétua"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a retirar os restos mortais do(a) falecido(a) ${b(fal)} na sepultura perpétua (tipo) ${b(tO)}, nº ${b(sO)}, da quadra ${b(qO)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)} para o Cemitério ${b(cD)}.`; break;
+        case "permuta_sepultura": tit="Permuta de sepultura"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a permutar a sepultura ${b(tO)} n° ${b(sO)} registrado no livro nº ${b(dL)}, às fls nº ${b(dF)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)} e permutar por outra vaga no Cemitério do ${b(cD)}.`; break;
+        case "reparo_diversos": tit="Reparo diversos"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a requerer reparo diversos na sepultura perpétua ${b(tO)} nº ${b(sO)}, registrado no livro nº ${b(dL)}, às fls nº ${b(dF)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)}.`; break;
+        case "capacidade_nicho": tit="Termo de responsabilidade para capacidade do nicho e colocação de placa"; txt=`tomo ciência que o nicho a ser adquirido através do processo n° ${b(proc)} possui capacidade somente para uma ossada.<br><br><b>Informação para quem abriu processo de colocação de placa:</b><br>• Não será aceita placas de identificação que não houver as mesmas dimensões do nicho;<br>• Os funcionários do Cemitério Municipal do Maruí são proibidos de fazer medição de pedra mármore / granito para nicho;<br>• A medição da placa será feita pelo funcionário da marmoraria/loja contratada pela família;<br>• Poderá ser aproveitada lápides oriundas de sepulturas ou de entradas de restos mortais desde que esteja dentro dos padrões mencionados acima;<br>• O funcionário (pedreiro) do Cemitério colocará a placa sem custo adicional;<br>• Não poderá colocar placas de azulejos, plástico ou inox; Só poderá ser placa de mármore/granito;<br>• O recibo entregue após o pagamento tem validade de 90 (NOVENTA) dias.<br><br><b>Obs.:</b> Sendo assim, me responsabilizo por qualquer eventualidade.`; break;
+        case "recolhimento_lacre_nicho_perp": tit="Recolhimento da ossada ao nicho perpétuo"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a solicitar o recolhimento dos restos mortais do(a) falecido(a) ${b(fal)} exumados e identificados sob lacre de nº ${b(lacre)} que se encontravam na sepultura (tipo) ${b(tO)}, nº ${b(sO)}, quadra ${b(qO)}, que se encontra no Cemitério ${b(cO)} e recolher a ossada ao nicho perpétuo nº ${b(dN)}, registrado no livro nº ${b(dL)}, as fls. ${b(dF)}, em nome de ${b(dP)} no Cemitério do ${b(cD)}.`; break;
+        case "saida_lacre": tit="Saída da ossada sob lacre"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a solicitar o recolhimento dos restos mortais do(a) falecido(a) ${b(fal)} exumados e identificados sob lacre de nº ${b(lacre)} que se encontravam na sepultura (tipo) ${b(tO)}, nº ${b(sO)}, qd ${b(qO)}, que se encontra no Cemitério ${b(cO)} e saída dos ossos para o Cemitério ${b(cD)}.`; break;
+        case "permuta_nicho": tit="Permuta de nicho"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a transladar os restos mortais do(a) falecido(a) ${b(fal)} no nicho perpétuo nº ${b(sO)}, registrado no livro nº ${b(dL)}, às fls nº ${b(dF)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)} e permutar por um nicho vago no Cemitério do ${b(cD)}.`; break;
+        case "permissao_uso_sepultura": tit="Permissão de uso de sepultura"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a solicitar a permissão de uso da sepultura (tipo) ${b(tO)} n° ${b(sO)} quadra ${b(qO)} onde se encontra os restos mortais de ${b(fal)} no Cemitério ${b(cO)}.`; break;
+        case "autorizacao_placa_nicho": tit="Autorização para colocação de placa de identificação no nicho perpétuo"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a dispor de uma placa de identificação no nicho perpétuo nº ${b(dN)}, registrado no livro nº ${b(dL)}, as fls. ${b(dF)}, em nome de ${b(dP)} no Cemitério do ${b(cD)}.`; break;
+        case "servico_reforma_sep_perp": tit="Serviço na sepultura perpétua"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a requerer serviço em ${b(sR)} na sepultura perpétua ${b(tO)} nº ${b(sO)}, registrado no livro nº ${b(dL)}, às fls nº ${b(dF)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)}.`; break;
+        case "declaracao_residencia": tit="De residência"; txt=`Declaro para devidos fins que tenho domicílio a ${b(endC)}, bairro ${b(upper(d.bairro))}, município ${b(upper(d.municipio))}, CEP ${b(d.cep||'___________')}.`; break;
+        case "cancelamento_processo": tit="Termo de cancelamento"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)} sepultado na sepultura ${b(tO)} n° ${b(sO)} no cemitério ${b(cO)}, solicitar o cancelamento do meu processo nº ${b(proc)}.<br><br>Sugiro o arquivamento.`; break;
+        case "termo_entrada_ossos_mumificados": tit="Termo de responsabilidade – Entrada de ossos mumificados"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)}, sepultado em ${b(tO)} nº ${b(sO)} no cemitério ${b(cO)}, me responsabilizar perante a Prefeitura Municipal de Niterói, que caso seja constatado que a ossada encontra-se em estado de mumificação, a mesma não poderá, sob nenhuma hipótese, ser retirada do cemitério de origem, ficando impedida a entrada de ossos nos cemitérios Municipais de Niterói. Comprometo-me a respeitar as orientações e determinações técnicas dos órgãos responsáveis e eximo a Prefeitura Municipal de Niterói de qualquer responsabilidade quanto à impossibilidade de remoção ou traslado da ossada nessas condições.<br><br>Sendo assim me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
+        case "termo_capacidade_nicho_perpetuo": tit="Termo de responsabilidade – Capacidade do nicho perpétuo"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)}, sepultado em ${b(tO)} nº ${b(sO)} no cemitério ${b(cO)}, Declaro-me responsável perante a Prefeitura Municipal de Niterói e ciente de que, caso o nicho perpétuo nº ${b(dN!=='_____'?dN:sO)} não possua capacidade física para receber a ossada, comprometo-me, por minha conta, a providenciar a aquisição de um novo nicho que atenda às exigências e normas vigentes do cemitério ou a dar outro destino adequado aos restos mortais.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
+        case "termo_lapide_perpetuo": tit="Termo de responsabilidade para colocação de lápide em perpétuos"; txt=`tomo ciência que:<br><br>• Não será aceita placas de identificação que não houver as mesmas dimensões do nicho ou sepultura;<br>• Os funcionários do Cemitério Municipal do Maruí são proibidos de fazer medição de pedra mármore / granito para nicho ou sepultura;<br>• A medição da placa será feita pelo funcionário da marmoraria contratada pela família;<br>• Poderá ser aproveitada lápides oriundas de sepulturas ou de entradas de restos mortais desde que esteja dentro dos padrões mencionados acima;<br>• O funcionário do Cemitério colocará a placa sem custo adicional;<br>• Não poderá colocar placas de azulejos, plástico ou inox;<br>• Só poderá ser placa de mármore/granito.<br>• O recibo entregue após o pagamento tem validade de 90 (NOVENTA) dias.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
+        case "termo_reforma_perpetuo": tit="Termo de responsabilidade para reformas ou serviços em perpétuos"; txt=`tomo ciência que:<br><br>• O Cemitério NÃO guardará as ossadas que estão na sepultura durante o serviço / reforma;<br>• Os funcionários do Cemitério NÃO poderão fazer qualquer tipo de mão de obra na sepultura perpétua;<br>• NÃO fazemos indicações de profissionais, a família deverá trazer o profissional de sua escolha e confiança.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
     }
 
-    let blocoAssinaturaFamilia = "";
-    if (assinaturaResponsavelImg) {
-        blocoAssinaturaFamilia = `<div style="text-align:center; height:45px;"><img src="${assinaturaResponsavelImg}" style="max-height:40px; max-width:80%;"></div>`;
-    } else {
-        blocoAssinaturaFamilia = `<div style="height:45px;"></div>`;
+    let txtI = `Eu, ${b(upper(d.resp_nome))}, carteira de identidade nº ${b(rg)}, inscrito(a) sob o CPF nº ${b(cpf)}, residente à ${b(endC)}, bairro ${b(upper(d.bairro))}, município ${b(upper(d.municipio))}, contato telefônico ${b(tL||'___________')}, `;
+    if (tv === "capacidade_nicho" || tv === "termo_lapide_perpetuo" || tv === "termo_reforma_perpetuo") {
+        txtI = `Eu, ${b(upper(d.resp_nome))}, inscrito(a) sob o CPF n° ${b(cpf)}, `;
+    } else if (tv === "declaracao_residencia" || tv === "cancelamento_processo" || tv === "termo_entrada_ossos_mumificados" || tv === "termo_capacidade_nicho_perpetuo") {
+        txtI = `Eu, ${b(upper(d.resp_nome))}, ${tv==="declaracao_residencia"?'carteira de identidade':'portador(a) da carteira de identidade'} nº ${b(rg)}, inscrito(a) sob o CPF nº ${b(cpf)}.<br><br>`;
     }
 
-    let blocoAssinaturaAtendente = "";
-    if (assinaturaAtendenteImg) {
-        blocoAssinaturaAtendente = `<div style="text-align:center; height:45px;"><img src="${assinaturaAtendenteImg}" style="max-height:40px; max-width:80%;"></div>`;
-    } else {
-        blocoAssinaturaAtendente = `<div style="height:45px;"></div>`;
-    }
-
-    let nomeAtendente = (d.atendente_sistema || (usuarioLogado ? usuarioLogado.nome : 'N/A')).toUpperCase();
-
-    const htmlComprovante = `
-    <html>
-    <head>
-        <title>Comprovante</title>
-        <style>
-            @page { size: A4 portrait; margin: 8mm; } 
-            body { font-family: Arial, sans-serif; font-size: 14px; margin: 0; padding: 10px; line-height: 1.3; color: #000; } 
-            .header { text-align: center; margin-bottom: 25px; position: relative; } 
-            .header h2 { font-size: 20px; text-decoration: underline; margin: 0; font-weight: bold; text-transform: uppercase; color: #000; } 
-            .protocolo { position: absolute; top: -5px; right: 0; font-size: 14px; font-weight: bold; border: 2px solid #000; padding: 5px 10px; } 
-            .content { width: 100%; } 
-            .line { margin-bottom: 4px; white-space: nowrap; overflow: hidden; } 
-            .bold { font-weight: 900; } 
-            .red { color: red; font-weight: bold; } 
-            .section-title { font-weight: 900; margin-top: 15px; margin-bottom: 2px; text-transform: uppercase; font-size: 14px; } 
-            .two-columns { display: flex; justify-content: space-between; margin-top: 10px; } 
-            .col-left { width: 60%; } 
-            .col-right { width: 38%; } 
-            .assinaturas-block { display: flex; justify-content: space-between; margin-top: 25px; margin-bottom: 10px; gap: 20px; } 
-            .ass-line { text-align: center; padding-top: 2px; flex: 1; font-size: 12px; } 
-            .obs-text { font-weight: bold; font-size: 12px; margin-top: 5px; } 
-            .box-lateral { border: 2px solid #000; padding: 5px; font-weight: 900; font-size: 12px; height: 100%; display: flex; flex-direction: column; justify-content: space-between; } 
-            .termo-juridico { text-align: justify; font-size: 12px; line-height: 1.3; } 
-            .footer-line { margin-top: 10px; border-top: 1px solid #000; padding-top: 5px; font-weight: 900; font-size: 12px; } 
-            .aviso-final { border: 2px solid #000; padding: 5px; margin-top: 10px; font-weight: 900; text-align: justify; font-size: 12px; line-height: 1.3; } 
-            .spacer { margin-left: 10px; } 
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" style="max-height: 60px; margin-bottom: 5px;">
-            <h2>Comprovante de Atendimento</h2>
-            <div class="protocolo">PROTOCOLO: ${p}</div>
-        </div>
-        <div class="content">
-            <div class="line"><span class="bold">Nome do FALECIDO:</span> ${d.nome.toUpperCase()}</div>
-            <div class="line"><span class="bold">Nome do RESPONSÁVEL:</span> ${(d.resp_nome || '').toUpperCase()} <span style="margin-left:5px; font-weight:normal;">${relacao}</span></div>
-            <div class="line"><span class="bold">Funerária:</span> ${d.funeraria.toUpperCase()} <span style="margin-left:15px">(Rep: ${d.func_funeraria || 'N/A'})</span></div>
-            <div class="line"><span class="bold">Atendente Responsável:</span> ${nomeAtendente}<span class="bold" style="margin-left:20px">DATA DE HORARIO DE ATENDIMENTO:</span> ${dataHoraAtendimentoTexto}</div>
-            <div class="line"><span class="bold">Data:</span> ${fd(d.data_ficha)} <span class="bold spacer">Hora:</span> ${d.hora} <span class="bold spacer">SEPULTURA:</span> ${d.sepul} <span class="bold spacer">${(d.local && d.local.includes("MARUÍ")) ? "QUADRA:" : "RUA:"}</span> ${d.qd} <span class="bold spacer">CAPELA:</span> ${d.cap}</div>
-            <div class="line"><span class="bold">COM CAPELA</span> ${chk(cc)} <span class="bold">SEM CAPELA</span> ${chk(!cc)} <span class="bold spacer">DATA DO FALECIMENTO:</span> ${fd(d.data_obito)} AS ${txtHoraObito} <span class="red spacer">[${tempoDecorrido}]</span></div>
-            <div class="line"><span class="bold">Cemitério:</span> (${im?'X':' '}) MARUÍ (${is?'X':' '}) SÃO FRANCISCO XAVIER (${ii?'X':' '}) SÃO LÁZARO DE ITAIPÚ</div>
-            <div class="line">${chkEC('SOLTEIRO')} SOLTEIRO ${chkEC('CASADO')} CASADO ${chkEC('VIUVO')} VÍUVO ${chkEC('UNIAO_ESTAVEL')} UNIÃO ESTÁVEL ${chkEC('DIVORCIADO')} DIVORCIADO ${chkEC('IGNORADO')} IGNORADO</div>
-            
-            <div class="section-title">ASSINAR TERMO DE COMPROMISSO NO CEMITÉRIO</div>
-            <div class="line" style="margin-top:5px; font-size:14px; border: 1px solid #000; padding: 5px;"><span class="bold">TIPO DE SEPULTURA SELECIONADA:</span> ${txtSep}</div>
-            <div class="line" style="margin-top:10px"><span class="bold">TANATO:</span> (${d.tanato==='SIM'?'X':' '}) SIM (${d.tanato==='NAO'?'X':' '}) NÃO</div>
-            
-            <div class="assinaturas-block">
-                <div class="ass-line">
-                    ${blocoAssinaturaAtendente}
-                    <div style="border-top:1px solid #000;">Acolhimento / Atendente:<br><b>${nomeAtendente}</b></div>
-                </div>
-                <div class="ass-line">
-                    ${blocoAssinaturaFamilia}
-                    <div style="border-top:1px solid #000;">Assinatura do responsável/família<br><b>${(d.resp_nome||'').toUpperCase()}</b></div>
-                </div>
-            </div>
-            
-            <div class="obs-box">OBS: PASSANDO DAS 36 HORAS DO FALECIMENTO SOMENTE COM TANATOPRAXIA.</div>
-            <div class="obs-box">OBS.: VELÓRIO COM DURAÇÃO DE DUAS HORAS ANTES DO SEPULTAMENTO. EM CASO DE ATRASO DO SERVIÇO FUNERÁRIO NÃO SERÁ ESTENDIDO O HORÁRIO ESTABELECIDO.</div>
-            
-            <div class="line" style="margin-top: 15px; border: 2px solid #000; padding: 5px;">
-                <span class="bold">PREVISÃO DE EXUMAÇÃO:</span> A partir de <span class="red" style="font-size:16px;">${dataExumacao}</span><br>
-                <span style="font-size:10px;">(Legislação: 3 anos para Adultos / 2 anos para Crianças até 11 anos)</span>
-                
-                <div style="margin-top: 15px; text-align: center;">
-                    ${blocoAssinaturaFamilia}
-                    <div style="border-top: 1px solid #000; width: 60%; margin: 0 auto;">Assinatura do Responsável (Ciência do Prazo)</div>
-                </div>
-            </div>
-            
-            <div class="two-columns">
-                <div class="col-left">
-                    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin-bottom:5px;">TERMO DE COMPROMISSO CEMITÉRIOS MUNICIPAIS</div>
-                    <div class="termo-juridico">
-                        Sendo o <span class="bold">FALECIDO CASADO</span>, o responsável perante, o Cemitério do MARUÍ, SÃO FRANCISCO E ITAIPU será obrigatoriamente o <span class="bold">CONJUGE</span>.<br>
-                        Sendo o <span class="bold">FALECIDO VIÚVO</span>, os responsáveis perante o CEMITÉRIO do MARUÍ, SÃO FRANCISCO E ITAIPU serão obrigatoriamente os <span class="bold">FILHOS</span>.<br>
-                        Sendo o <span class="bold">FALECIDO SOLTEIRO</span>, os responsáveis perante o CEMITÉRIO do MARUÍ, SÃO FRANCISCO E ITAIPU obrigatoriamente os <span class="bold">FILHOS, PAIS, IRMÃOS</span>.<br>
-                        Será exigida a presentation de documentos de <span class="bold" style="text-decoration:underline">IDENTIDADE e CPF</span>.
-                    </div>
-                    
-                    <div class="assinaturas-block" style="margin-top: 40px;">
-                        <div style="flex:1;"></div>
-                        <div class="ass-line">
-                            ${blocoAssinaturaFamilia}
-                            <div style="border-top: 1px solid #000;">Assinatura funcionário/família</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-right">
-                    <div class="box-lateral">
-                        <div>CAPELAS MUNICIPAIS E PARTICULARES:</div><br>
-                        <div>PAGAMENTO E NOTA FISCAL DAS TAXAS MUNICIPAIS E INVOL COM DUAS HORAS ANTES DO SEPULTAMENTO</div><br><br>
-                        <div>CLIENTE: _____________________</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="footer-line">
-                MARCADO: ________________________ PERMISSIONÁRIO: ${(d.resp_nome || '').toUpperCase()}
-            </div>
-            
-            <div style="font-weight:bold; font-size:12px; margin-top:5px;">TEL: ${d.telefone||''}</div>
-            
-            <div class="aviso-final">
-                <span style="text-decoration:underline">COMUNICADO AOS FAMILIARES DO FALECIDO E AS EMPRESAS FUNERÁRIAS RESPONSÁVEIS PELO SEPULTAMENTO.</span><br>
-                Informamos que somente será autorizada a entrada do corpo para velório e sepultamento mediante a apresentação dos seguintes documentos:<span class="bold">GUIA DE SEPULTAMENTO, NOTA FISCAL (EMPRESA RESPONSÁVEL PELO SERVIÇO), TAXAS MUNICIPAIS PAGAS e INVOL.</span>
-            </div>
-        </div>
-    </body>
-    <script>window.onload=function(){window.print()}</script>
-    </html>`;
-    
-    const w = window.open('','_blank'); 
-    w.document.write(htmlComprovante); 
-    w.document.close();
+    const html = `<html><head><title>${tit}</title><style>@page{size:A4 portrait;margin:15mm}body{font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}.header{text-align:center;margin-bottom:25px}.header img{height:60px;margin-bottom:10px}.header-title{font-weight:bold;font-size:14px;margin-top:5px}.doc-title{font-weight:bold;font-size:20px;text-transform:uppercase;margin-top:20px;text-decoration:underline}.content{text-align:justify;margin-top:30px}.footer{margin-top:50px;text-align:center}.legal{font-size:11px;text-align:center;margin-top:40px;font-weight:bold;line-height:1.2}</style></head><body>
+        <div class="header"><img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo Prefeitura"><div class="header-title">SECRETARIA DE MOBILIDADE E INFRAESTRUTURA - SEMOBI</div><div class="header-title">SUBSECRETARIA DE INFRAESTRUTURA - SSINFRA</div><div class="doc-title">DECLARAÇÃO</div><div style="font-weight:bold;font-size:17px;margin-top:10px;">${tit}</div></div>
+        <div class="content">${txtI} ${txt}</div>
+        <div class="footer"><div>Niterói, ${dtxt}</div><div style="margin-top:50px;display:flex;flex-direction:column;align-items:center;"><div style="width:350px;text-align:center;">${blR}<div style="border-top:1px solid #000;padding-top:5px;font-weight:bold;">Assinatura conforme documento apresentado</div></div><div style="margin-top:15px;font-weight:bold;font-size:14px;">*ANEXAR XEROX DO RG</div></div></div>
+        <div class=\"legal\">Art. 299 do Código Penal - Falsidade ideológica: Omitir, em documento público ou particular, declaração que dele devia constar, ou nele inserir ou fazer inserir declaração falsa ou diversa da que devia ser escrita, com o fim de prejudicar direito, criar obrigação ou alterar a verdade sobre fatos juridicamente relevante, é crime.</div>
+    </body><script>window.onload=()=>setTimeout(()=>window.print(),800)</script></html>`;
+    const w = window.open('','_blank'); w.document.write(html); w.document.close();
 }
