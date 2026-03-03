@@ -337,26 +337,25 @@ function renderizarTabela(lista) {
     if (!lista.length) return tb.innerHTML = '<tr><td colspan="7" style="padding:40px; text-align:center;">Nenhum registro encontrado.</td></tr>';
     lista.forEach(i => {
         let tl = i.telefone || ''; let tIdx = 2; while(i['telefone'+tIdx]) { tl += ' / ' + i['telefone'+tIdx]; tIdx++; }
-        let servicosHtml = i.servico_requerido ? i.servico_requerido.split(',').map(s => `<span style="display:inline-block; border: 1px solid #3699ff; color: #3699ff; border-radius: 4px; padding: 4px 8px; font-size: 10px; font-weight: bold; margin: 2px;">${s.trim().toUpperCase()}</span>`).join('') : '-';
-        let cemDisplay = i.cemiterio === 'OUTRO' ? i.cemiterio_outro : i.cemiterio;
-        let cemBadge = `<span style="color:#e83e8c; font-weight:800; font-size:11px;">📍 ${cemDisplay?.toUpperCase()||'-'}</span>`;
+        
+        let cemDisplay = i.cemiterio==='OUTRO'?i.cemiterio_outro:i.cemiterio;
         
         tb.innerHTML += `<tr onclick="window.visualizarDocumentos('${i.id}')">
-            <td style="vertical-align:middle;"><b>${i.resp_nome?.toUpperCase()||'-'}</b><br><span style="font-size:11px; color:#555;"><span style="color:#e74c3c;">📞</span> ${tl||'-'}</span></td>
-            <td style="vertical-align:middle;"><span style="color:#34495e;">👤</span> <b style="color:#333;">${i.nome_falecido?.toUpperCase()||'-'}</b></td>
-            <td style="vertical-align:middle;">${cemBadge}</td>
-            <td style="vertical-align:middle;">${servicosHtml}</td>
+            <td style="vertical-align:middle;"><b>${i.resp_nome?.toUpperCase()||'-'}</b><br><span style="font-size:11px;">📞 Tel: ${tl}</span></td>
+            <td style="vertical-align:middle;">👤 <b>${i.nome_falecido?.toUpperCase()||'-'}</b></td>
+            <td style="vertical-align:middle;">📍 ${cemDisplay}</td>
+            <td style="vertical-align:middle;">${i.servico_requerido||'-'}</td>
             <td style="vertical-align:middle; font-size:13px; line-height: 1.5;">
                 <div style="color: #3699ff;"><b>Prot:</b> <span style="font-weight:bold;">${i.protocolo||'-'}</span></div>
                 ${i.processo ? `<div style="color: #d35400;"><b>Proc:</b> <span style="font-weight:bold;">${i.processo}</span></div>` : ''}
                 <div style="color: #27ae60;"><b>GRM:</b> <span style="font-weight:bold;">${i.grm||'-'}</span></div>
             </td>
-            <td style="vertical-align:middle; color:#555;">${i.data_registro?formatarDataInversa(i.data_registro.split('T')[0]):'-'}</td>
+            <td style="vertical-align:middle;">${i.data_registro?formatarDataInversa(i.data_registro.split('T')[0]):'-'}</td>
             <td style="text-align:right; vertical-align:middle;">
                 <div style="display:flex; gap:5px; justify-content:flex-end;">
                     <button class="btn-icon btn-editar-circle" title="Editar Requerimento" onclick="event.stopPropagation();window.editar('${i.id}')">✏️</button>
                     <button class="btn-icon btn-liberar-circle" title="Preencher Liberação" onclick="event.stopPropagation();window.abrirLiberacao('${i.id}')">📝</button>
-                    <button class="btn-icon" style="background-color: #f4ecf8; color: #8e44ad; border:none; border-radius:8px; cursor:pointer; width:30px; height:30px; display:flex; justify-content:center; align-items:center;" title="Unir PDFs" onclick="event.stopPropagation();window.abrirModalUnir('${i.protocolo}')">📁</button>
+                    <button class="btn-icon btn-unir-circle" title="Unir PDFs" onclick="event.stopPropagation();window.abrirModalUnir('${i.protocolo}')">📁</button>
                     <button class="btn-icon btn-excluir-circle" title="Excluir" onclick="event.stopPropagation();window.excluir('${i.id}')">🗑️</button>
                 </div>
             </td></tr>`;
@@ -461,6 +460,9 @@ window.imprimirRequerimento = () => {
         <div class="section"><div class="section-title">Dados do Requerente</div><div class="row"><div class="field" style="flex:2;"><span class="label">Nome Completo</span><span class="value">${upper(d.resp_nome)}</span></div><div class="field"><span class="label">Grau de Parentesco</span><span class="value">${upper(d.parentesco)}</span></div></div><div class="row"><div class="field" style="flex:2.5;"><span class="label">Endereço</span><span class="value">${endC}</span></div><div class="field" style="flex:0.5;"><span class="label">CEP</span><span class="value">${d.cep||'-'}</span></div></div><div class="row"><div class="field"><span class="label">Bairro</span><span class="value">${upper(d.bairro)}</span></div><div class="field"><span class="label">Município</span><span class="value">${upper(d.municipio)}</span></div><div class="field"><span class="label">Telefone(s)</span><span class="value">${tL}</span></div></div></div>
         <div class="section"><div class="section-title">Dados do Falecido(a)</div><div class="row"><div class="field" style="flex:2;"><span class="label">Nome do(a) Falecido(a)</span><span class="value">${upper(d.nome_falecido)}</span></div><div class="field"><span class="label">Data de Sepultamento</span><span class="value">${formatarDataInversa(d.data_sepultamento)}</span></div><div class="field"><span class="label">Cemitério</span><span class="value">${d.cemiterio==='OUTRO'?upper(d.cemiterio_outro):upper(d.cemiterio)}</span></div></div></div>
         <div class="section"><div class="section-title">Serviços Requeridos e Localização</div><div class="row"><div class="field"><div class="chk-item">( X ) ${upper(d.servico_requerido)}</div></div><div class="field"><div class="chk-item">( X ) ${upper(tSep)}</div></div></div><div class="row" style="margin-top:15px;"><div class="field"><span class="label">Nº da Sepultura</span><span class="value">${d.sepul}</span></div><div class="field"><span class="label">Quadra</span><span class="value">${upper(d.qd)}</span></div><div class="field" style="flex:2;"><span class="label">Proprietário (Se Perpétua)</span><span class="value">${upper(d.proprietario)}</span></div></div><div class="row" style="margin-top:10px;"><div class="field"><span class="label">Assunto / Observações</span><span class="value">${upper(d.assunto)}</span></div></div></div>
+        
+        <div class="section"><div class="section-title">Destino</div><div class="row"><div class="field"><span class="label">Cemitério</span><span class="value">${upper(d.cemiterio_destino)}</span></div><div class="field"><span class="label">Tipo</span><span class="value">${upper(d.destino_tipo_sepultura)}</span></div><div class="field"><span class="label">Nº Sepultura/Nicho</span><span class="value">${upper(d.destino_local_nro)}</span></div><div class="field"><span class="label">Quadra</span><span class="value">${upper(d.destino_qd)}</span></div></div><div class="row" style="margin-top:10px;"><div class="field"><span class="label">Livro Nº</span><span class="value">${upper(d.destino_livro)}</span></div><div class="field"><span class="label">Fls Nº</span><span class="value">${upper(d.destino_fls)}</span></div><div class="field" style="flex:2;"><span class="label">Proprietário (Destino)</span><span class="value">${upper(d.destino_proprietario)}</span></div></div></div>
+
         <div class="footer-note"><b>EM TEMPO:</b> Ao assinar este requerimento, declaro estar ciente que depois de passados <b>90 (noventa) dias</b> do deferimento desse procedimento administrativo, não havendo manifestação de minha parte para pagamento e realização do pleiteado, o processo será encerrado e arquivado, sendo considerado como desinteresse de minha parte; os restos mortais, quando for objeto do pedido, serão exumados e recolhidos ao ossuário geral. <br><br><b>OBS.: O comprovante de requerimento (protocolo) deverá ser apresentado no cemitério em até 24h após emissão.</b></div>
         <div style="margin-top:10px; font-size:14px;">Nestes termos, peço deferimento.</div><div style="text-align:right; margin-top:5px; font-size:14px;"><b>${dtxt}</b></div>
         <div style="display:flex; justify-content:space-around; margin-top:30px; text-align:center;"><div>${blA}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>${upper(d.atendente_sistema||'ATENDENTE')}</b><br><span style="font-size:11px; color:#555;">(Assinatura do Atendente)</span></div></div><div>${blR}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>${upper(d.resp_nome)}</b><br><span style="font-size:11px; color:#555;">(Assinatura do Requerente)</span></div></div></div>
