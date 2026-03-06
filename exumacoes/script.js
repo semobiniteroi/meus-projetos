@@ -359,10 +359,22 @@ function renderizarTabela(lista) {
         
         let cemDisplay = i.cemiterio==='OUTRO'?i.cemiterio_outro:i.cemiterio;
         
-        tb.innerHTML += `<tr onclick="window.visualizarDocumentos('${i.id}')">
-            <td style="vertical-align:middle;"><b>${i.resp_nome?.toUpperCase()||'-'}</b><br><span style="font-size:11px;">Tel: ${tl}</span></td>
-            <td style="vertical-align:middle;"><b>${i.nome_falecido?.toUpperCase()||'-'}</b></td>
-            <td style="vertical-align:middle;">${cemDisplay}</td>
+        let rowBorder = "border-left: 4px solid transparent;";
+        let statusHtml = "";
+        
+        if (i.chk_doc_ausentes) { 
+            rowBorder = "border-left: 4px solid #e74c3c;"; 
+            statusHtml += `<span style="background:#fce8e6; color:#e74c3c; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;" title="${i.doc_ausentes_desc||''}">Doc Ausentes</span>`; 
+        }
+        else if (i.chk_arquivado) { rowBorder = "border-left: 4px solid #95a5a6;"; statusHtml += `<span style="background:#f2f4f5; color:#7f8c8d; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Arquivado</span>`; }
+        else if (i.chk_aguardando) { rowBorder = "border-left: 4px solid #f39c12;"; statusHtml += `<span style="background:#fcf3cf; color:#f39c12; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Aguardando</span>`; }
+        else if (i.chk_procedido) { rowBorder = "border-left: 4px solid #3498db;"; statusHtml += `<span style="background:#e1f0ff; color:#3498db; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Procedido</span>`; }
+        else if (i.chk_deferido) { rowBorder = "border-left: 4px solid #2ecc71;"; statusHtml += `<span style="background:#e8f8f5; color:#2ecc71; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Deferido</span>`; }
+
+        tb.innerHTML += `<tr onclick="window.visualizarDocumentos('${i.id}')" style="${rowBorder}">
+            <td style="vertical-align:middle;"><b>${i.resp_nome?.toUpperCase()||'-'}</b><div style="margin-top:4px; margin-bottom:4px;">${statusHtml}</div><span style="font-size:11px; color:#555;">📞 ${tl||'-'}</span></td>
+            <td style="vertical-align:middle;">👤 <b>${i.nome_falecido?.toUpperCase()||'-'}</b></td>
+            <td style="vertical-align:middle;">📍 ${cemDisplay}</td>
             <td style="vertical-align:middle;">${i.servico_requerido||'-'}</td>
             <td style="vertical-align:middle; font-size:13px; line-height: 1.5;">
                 <div style="color: #3699ff;"><b>Prot:</b> <span style="font-weight:bold;">${i.protocolo||'-'}</span></div>
@@ -385,7 +397,10 @@ function renderizarTabela(lista) {
 window.abrirModal = () => {
     _el('form-atendimento').reset(); _setVal('docId',''); _setVal('protocolo','');
     const bx = _el('box-telefones'); if(bx) { const inps = bx.querySelectorAll('input'); for(let i=1; i<inps.length; i++) bx.removeChild(inps[i]); window.telCount = 1; }
-    window.toggleCemiterioOutro(); if(usuarioLogado) _setVal('atendente_sistema', usuarioLogado.nome); safeDisplay('modal', 'block');
+    window.toggleCemiterioOutro(); 
+    if(_el('div_doc_ausentes')) _el('div_doc_ausentes').style.display = 'none';
+    if(usuarioLogado) _setVal('atendente_sistema', usuarioLogado.nome); 
+    safeDisplay('modal', 'block');
 }
 window.fecharModal = () => safeDisplay('modal', 'none');
 window.fecharModalVisualizar = () => safeDisplay('modal-visualizar', 'none');
@@ -394,7 +409,19 @@ window.editar = id => getDB().collection("requerimentos_exumacao").doc(id).get()
         const d = doc.data(); const bx = _el('box-telefones');
         if(bx) { const inps = bx.querySelectorAll('input'); for(let i=1; i<inps.length; i++) bx.removeChild(inps[i]); window.telCount = 1; }
         let idx = 2; while(d['telefone'+idx]) { window.addTelefone(d['telefone'+idx]); idx++; }
-        Object.keys(d).forEach(k => { const el = _el(k); if(el && el.type!=='file') { if(el.tagName==='SELECT' && el.multiple) Array.from(el.options).forEach(o=>o.selected = d[k]?.includes(o.value)); else el.value = d[k]; } });
+        Object.keys(d).forEach(k => { 
+            const el = _el(k); 
+            if(el && el.type!=='file') { 
+                if(el.type === 'checkbox') {
+                    el.checked = !!d[k];
+                    if(el.onchange) el.onchange(); 
+                } else if(el.tagName==='SELECT' && el.multiple) {
+                    Array.from(el.options).forEach(o=>o.selected = d[k]?.includes(o.value)); 
+                } else {
+                    el.value = d[k]; 
+                }
+            } 
+        });
         window.toggleCemiterioOutro(); _setVal('docId', doc.id); safeDisplay('modal', 'block');
     }
 });
@@ -402,7 +429,17 @@ window.editar = id => getDB().collection("requerimentos_exumacao").doc(id).get()
 const form = _el('form-atendimento');
 if(form) form.onsubmit = e => {
     e.preventDefault(); const id = _val('docId'), d = {};
-    Array.from(form.elements).forEach(el => { if(el.id && el.type!=='submit' && el.type!=='button') d[el.id] = (el.tagName==='SELECT' && el.multiple) ? Array.from(el.selectedOptions).map(o=>o.value).join(', ') : el.value; });
+    Array.from(form.elements).forEach(el => { 
+        if(el.id && el.type!=='submit' && el.type!=='button') {
+            if(el.type === 'checkbox') {
+                d[el.id] = el.checked;
+            } else if(el.tagName==='SELECT' && el.multiple) {
+                d[el.id] = Array.from(el.selectedOptions).map(o=>o.value).join(', ');
+            } else {
+                d[el.id] = el.value; 
+            }
+        }
+    });
     if(!id) { d.data_registro = new Date().toISOString(); d.protocolo = window.gerarProtocolo(); }
     getDB().collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado?.nome||'Anon', acao: id?"EDIÇÃO":"CRIAÇÃO", detalhe: `Protocolo: ${d.protocolo} | Falecido: ${d.nome_falecido}`, sistema: "Exumacao" });
     if(id) getDB().collection("requerimentos_exumacao").doc(id).update(d).then(() => window.fecharModal()); else getDB().collection("requerimentos_exumacao").add(d).then(() => window.fecharModal());
@@ -455,7 +492,15 @@ window.visualizarDocumentos = id => getDB().collection("requerimentos_exumacao")
         let d = doc.data(); d.id = doc.id; dadosAtendimentoAtual = d;
         assinaturaResponsavelImg = d.assinatura_responsavel||null; assinaturaAtendenteImg = d.assinatura_atendente||null;
         let cemD = d.cemiterio==='OUTRO' ? d.cemiterio_outro : d.cemiterio;
-        if(_el('resumo-dados')) _el('resumo-dados').innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;"><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Protocolo</span><br><strong style="color:var(--primary-color);font-size:14px;">${d.protocolo||'N/A'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Requerente</span><br><strong style="font-size:14px;">${d.resp_nome?.toUpperCase()||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Falecido(a)</span><br><strong style="font-size:14px;">${d.nome_falecido?.toUpperCase()||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Cemitério / Serviço</span><br><strong>${cemD?.toUpperCase()||'-'} (${d.servico_requerido?.toUpperCase()||'-'})</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Localização Sepultura</span><br><strong>Nº ${d.sepul||'-'} / QD ${d.qd||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Administrativo</span><br><strong style="color:var(--danger);">Proc: ${d.processo||'-'} / GRM: ${d.grm||'-'}</strong></div><div style="grid-column:span 3;text-align:center;margin-top:5px;"><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Status de Assinatura</span><br><strong>${d.assinatura_responsavel?'✅ Família Assinou':'⏳ Aguardando Família'} | ${d.assinatura_atendente?'✅ Equipe Assinou':'⏳ Aguardando Equipe'}</strong></div></div>`;
+        
+        let statusHtmlView = "";
+        if (d.chk_doc_ausentes) statusHtmlView += `<span style="background:#fce8e6; color:#e74c3c; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Doc Ausentes: ${d.doc_ausentes_desc||''}</span>`;
+        if (d.chk_arquivado) statusHtmlView += `<span style="background:#f2f4f5; color:#7f8c8d; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Arquivado</span>`;
+        if (d.chk_aguardando) statusHtmlView += `<span style="background:#fcf3cf; color:#f39c12; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Aguardando</span>`;
+        if (d.chk_procedido) statusHtmlView += `<span style="background:#e1f0ff; color:#3498db; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Procedido</span>`;
+        if (d.chk_deferido) statusHtmlView += `<span style="background:#e8f8f5; color:#2ecc71; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Deferido</span>`;
+
+        if(_el('resumo-dados')) _el('resumo-dados').innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;"><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Protocolo</span><br><strong style="color:var(--primary-color);font-size:14px;">${d.protocolo||'N/A'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Requerente</span><br><strong style="font-size:14px;">${d.resp_nome?.toUpperCase()||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Falecido(a)</span><br><strong style="font-size:14px;">${d.nome_falecido?.toUpperCase()||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Cemitério / Serviço</span><br><strong>${cemD?.toUpperCase()||'-'} (${d.servico_requerido?.toUpperCase()||'-'})</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Localização Sepultura</span><br><strong>Nº ${d.sepul||'-'} / QD ${d.qd||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Administrativo</span><br><strong style="color:var(--danger);">Proc: ${d.processo||'-'} / GRM: ${d.grm||'-'}</strong></div><div style="grid-column:span 3;text-align:center;margin-top:5px;"><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Status de Assinatura</span><br><strong>${d.assinatura_responsavel?'✅ Família Assinou':'⏳ Aguardando Família'} | ${d.assinatura_atendente?'✅ Equipe Assinou':'⏳ Aguardando Equipe'}</strong></div><div style="grid-column:span 3; margin-top:5px; text-align:center;"><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Andamento do Processo</span><br>${statusHtmlView || '<strong>-</strong>'}</div></div>`;
         safeDisplay('modal-visualizar', 'block');
     }
 });

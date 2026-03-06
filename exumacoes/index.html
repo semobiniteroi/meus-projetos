@@ -152,6 +152,19 @@
                 
                 <div class="form-grid" style="max-height: 60vh; overflow-y: auto; padding-right: 10px; padding: 30px;">
                     
+                    <div class="section-title">Andamento do Processo (Status)</div>
+                    <div class="input-group span-4" style="flex-direction: row; gap: 15px; flex-wrap: wrap;">
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_doc_ausentes" onchange="document.getElementById('div_doc_ausentes').style.display = this.checked ? 'block' : 'none'"> Documentos ausentes</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_deferido"> Processo deferido</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_procedido"> Serviço procedido</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_aguardando"> Aguardando retorno</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_arquivado"> Arquivado</label>
+                    </div>
+                    <div class="input-group span-4" id="div_doc_ausentes" style="display:none; margin-top: 5px;">
+                        <label>Quais documentos estão faltando?</label>
+                        <input type="text" id="doc_ausentes_desc" placeholder="Ex: Cópia do RG, Certidão de Óbito...">
+                    </div>
+
                     <div class="section-title">Dados do Requerente</div>
                     <div class="input-group span-2"><label>Nome do Requerente</label><input type="text" id="resp_nome" required></div>
                     
