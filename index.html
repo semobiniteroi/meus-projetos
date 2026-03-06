@@ -1,212 +1,705 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hub de Sistemas - SEMOBI Niterói</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Coordenação dos Cemitérios de Niterói</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
     <style>
-        :root {
-            --bg-color: #f0f2f5;
-            --card-bg: #ffffff;
-            --text-color: #333333;
-            --accent-green: #28a745; /* Estoque */
-            --accent-blue: #0056b3; /* Admin Funerário */
-            --accent-orange: #fd7e14; /* Consulta Pública */
-            --accent-purple: #6f42c1; /* Coord. Cemitérios */
-            --hover-shadow: 0 8px 16px rgba(0,0,0,0.1);
-        }
+        .tab-btn.active { background-color: #0056b3 !important; color: white !important; border-bottom: 3px solid #003d80; font-weight: bold; }
+        .modal-footer-custom { display: flex; justify-content: center; align-items: center; padding-top: 15px; border-top: 1px solid #eee; flex-wrap: wrap; gap: 8px; }
+        .modal-footer-custom button { padding: 8px 12px; font-size: 13px; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; gap: 5px; color: white; font-weight: 500; flex-grow: 1; justify-content: center; max-width: 180px; min-width: 120px; }
+        .btn-print-req { background-color: #e67e22; }
+        .btn-print-lib { background-color: #27ae60; }
+        .btn-close { background-color: #95a5a6; }
+        .section-title { font-size: 11px; font-weight: 800; color: #3699ff; text-transform: uppercase; margin-top: 15px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 5px; grid-column: span 4; }
+        .btn-liberar-circle { background-color: #e8f5e9; color: #2e7d32; }
+        .btn-unir-circle { background-color: #f4ecf8; color: #8e44ad; } 
+        
+        /* CSS DA ASSINATURA DIGITAL */
+        canvas#signature-pad { border: 2px dashed #ccc; background-color: #fff; touch-action: none; border-radius: 5px; cursor: crosshair; width: 100%; }
+        .btn-sign-fam { background-color: #663399; }
+        .btn-sign-func { background-color: #8e44ad; }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
+        /* CSS DO PAINEL ADMIN - MENU REVERTIDO E AJUSTADO PARA CABER NA TELA */
+        .btn-admin { background-color: #34495e; }
+        .tab-header { display: flex; border-bottom: 2px solid #ebedf3; background-color: #fcfcfc; width: 100%; box-sizing: border-box; }
+        .tab-btn { flex: 1; padding: 15px 5px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #5c677d; border-bottom: 3px solid transparent; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; white-space: nowrap; font-size: 13px; margin-bottom: -2px; outline: none; }
+        .tab-btn:hover { background-color: #f0f4f8; color: #0056b3; }
+        .tab-btn.active { background-color: #ffffff !important; color: #3699ff !important; border-bottom: 3px solid #3699ff !important; }
+        .tab-pane { display: none; padding: 25px 20px; }
+        .tab-pane.active { display: block; }
+        
+        .table-logs { width: 100%; font-size: 12px; border-collapse: collapse; }
+        .table-logs th, .table-logs td { border-bottom: 1px solid #eee; padding: 8px 10px; text-align: left; }
+        .btn-imprimir { background-color: white; color: var(--text-dark); border: 1px solid #ebedf3; border-radius: 6px; padding: 8px 15px; font-weight: 600; cursor: pointer; }
 
-        /* --- NOVO: Estilos do Cabeçalho Institucional --- */
-        .header-institucional {
-            text-align: center;
-            margin-bottom: 2rem;
-            padding-bottom: 1.5rem;
-            border-bottom: 2px solid #e1e1e1;
-            width: 100%;
-            max-width: 800px;
-        }
+        /* CSS DA TABELA DE USUÁRIOS E FORMULÁRIO (ADMIN) */
+        .admin-user-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; text-align: left; background: #fff; }
+        .admin-user-table th { padding: 12px 15px; color: #5c677d; font-weight: 700; border-bottom: 2px solid #edf2f9; }
+        .admin-user-table td { padding: 15px; vertical-align: middle; border-bottom: 1px solid #edf2f9; }
+        .admin-user-table tr:hover td { background: #f8fafc; }
+        .user-info { display: flex; align-items: center; gap: 12px; }
+        .user-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .action-group { display: flex; gap: 8px; justify-content: flex-end; }
+        .btn-action-square { width: 34px; height: 34px; border-radius: 8px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .btn-action-square:hover { transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0,0,0,0.1); }
+        .btn-action-view { background: #eef2fa; color: #6b7a90; }
+        .btn-action-edit { background: #fff4e5; color: #f39c12; }
+        .btn-action-del { background: #fce8e6; color: #e74c3c; }
+        .senha-oculta { letter-spacing: 2px; font-size: 16px; color: #888; margin-right: 10px; font-weight: bold; width: 60px; display: inline-block; }
+        
+        .admin-input-modern { border: 1px solid #dce1e7; padding: 10px 12px; border-radius: 6px; background: #fff; width: 100%; box-sizing: border-box; outline: none; font-family: inherit; font-size: 13px; color: #555; transition: border-color 0.2s; }
+        .admin-input-modern:focus { border-color: #3699ff; }
+        .admin-input-modern::placeholder { color: #aab2bd; }
+        .admin-btn-modern { background: #3699ff; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s; display: flex; align-items: center; justify-content: center; height: 100%; width: 100%; }
+        .admin-btn-modern:hover { background: #2a88e5; }
+        .admin-label { font-size: 10px; font-weight: bold; margin-bottom: 4px; display: block; text-transform: uppercase; }
 
-        .logo-prefeitura {
-            max-height: 90px;
-            margin-bottom: 15px;
-        }
+        /* DASHBOARD MODERNIZATION */
+        .dashboard-grid { display: flex; flex-wrap: wrap; gap: 20px; }
+        .card-chart { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #edf2f9; flex: 1 1 300px; display: flex; flex-direction: column; }
+        .card-chart.large { flex: 2 1 500px; }
+        .kpi-card { background: linear-gradient(135deg, #3699ff, #2a88e5); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(54,153,255,0.25); flex: 1; min-width: 200px; display: flex; flex-direction: column; justify-content: center; margin-bottom: 20px;}
+        .kpi-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; margin: 0; font-weight: 700;}
+        .kpi-value { font-size: 32px; font-weight: 800; margin: 5px 0 0 0; }
+        .chart-wrapper { position: relative; height: 300px; width: 100%; flex-grow: 1; }
 
-        .orgao-sigla {
-            font-size: 1.5rem;
-            font-weight: 800;
-            color: #222;
-            letter-spacing: 1px;
-            margin: 0;
-        }
+        /* CSS DO CALENDÁRIO TOPO */
+        .topo-content { display: flex; flex-direction: column; justify-content: center; }
+        .topo-content label { font-size: 8px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; margin: 0; line-height: 1; }
+        .topo-content input { border: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text-dark); padding: 0; outline: none; cursor: pointer; height: 16px; }
 
-        .orgao-nome {
-            font-size: 0.95rem;
-            color: #555;
-            text-transform: uppercase;
-            font-weight: 600;
-            margin-top: 5px;
-        }
-        /* ------------------------------------------------ */
-
-        h1 {
-            margin-bottom: 0.5rem;
-            color: #444;
-            font-weight: 600;
-        }
-
-        p.subtitle {
-            margin-bottom: 2.5rem;
-            color: #666;
-            font-size: 1.1rem;
-        }
-
-        .container {
-            display: flex;
-            gap: 2rem;
-            flex-wrap: wrap;
-            justify-content: center;
-            max-width: 1200px;
-            width: 100%;
-        }
-
-        .card {
-            background-color: var(--card-bg);
-            border-radius: 12px;
-            padding: 2rem;
-            width: 280px;
-            text-align: center;
-            text-decoration: none;
-            color: inherit;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
-            border: 1px solid #e1e1e1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--hover-shadow);
-        }
-
-        /* Configuração dos Ícones SVG */
-        .icon-svg {
-            width: 64px;
-            height: 64px;
-            margin-bottom: 1rem;
-            fill: currentColor;
-        }
-
-        .card h2 {
-            margin: 0.5rem 0;
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-
-        .card p {
-            font-size: 0.9rem;
-            color: #666;
-            margin: 0;
-        }
-
-        /* Cores Específicas */
-        .card.stock { color: #555; } 
-        .card.stock:hover { border-color: var(--accent-green); }
-        .card.stock .icon-svg { color: var(--accent-green); }
-
-        .card.admin { color: #555; }
-        .card.admin:hover { border-color: var(--accent-blue); }
-        .card.admin .icon-svg { color: var(--accent-blue); }
-
-        .card.public { color: #555; }
-        .card.public:hover { border-color: var(--accent-orange); }
-        .card.public .icon-svg { color: var(--accent-orange); }
-
-        .card.exumacao { color: #555; }
-        .card.exumacao:hover { border-color: var(--accent-purple); }
-        .card.exumacao .icon-svg { color: var(--accent-purple); }
-
-        .footer {
-            margin-top: 3rem;
-            font-size: 0.8rem;
-            color: #999;
-            text-align: center;
-        }
-
-        @media (max-width: 600px) {
-            .container {
-                flex-direction: column;
-                align-items: center;
-            }
-            .card {
-                width: 100%;
-                max-width: 320px;
-            }
-        }
+        @media (max-width: 768px) { .modal-footer-custom { padding-bottom: 20px; } .modal-footer-custom button { max-width: 48%; } }
     </style>
 </head>
 <body>
 
-    <div class="header-institucional">
-        <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Prefeitura de Niterói" class="logo-prefeitura">
-        <h2 class="orgao-sigla">SEMOBI</h2>
-        <div class="orgao-nome">Secretaria Municipal de Mobilidade e Infraestrutura</div>
+    <div id="tela-bloqueio" class="bloqueio-container">
+        <div class="bloqueio-box">
+            <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo">
+            <h3>Controle de Acesso</h3>
+            <p>Identifique-se para continuar</p>
+            <input type="text" id="login-usuario" placeholder="Usuário" style="margin-bottom: 10px;">
+            <input type="password" id="login-senha" placeholder="Senha" onkeypress="checarLoginEnter(event)">
+            <button onclick="fazerLogin()" class="btn-novo" style="width:100%; justify-content: center; margin-top: 15px;">🔓 Entrar</button>
+            <p id="msg-erro-login" style="color: red; display: none; margin-top: 10px; font-weight:bold;">Dados incorretos!</p>
+        </div>
     </div>
 
-    <h1>Central de Acesso</h1>
-    <p class="subtitle">Selecione o sistema desejado</p>
+    <header class="header-prefeitura">
+        <div class="logo-area">
+            <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Prefeitura de Niterói" id="logo-principal">
+            <div class="titulo-area">
+                <h3 style="margin-left: 10px; border-left: 2px solid #999; padding-left: 15px;">Coordenação dos Cemitérios<br><span style="color:#3699ff; font-weight:800;">DE NITERÓI</span></h3>
+            </div>
+        </div>
+        
+        <div class="info-area">
+            <div class="controles-topo">
+                <div class="topo-box">
+                    <span class="topo-icon" style="margin-right: 5px;">📅</span>
+                    <div class="topo-content">
+                        <label>Data</label>
+                        <input type="date" id="filtro-data">
+                    </div>
+                </div>
+                <div class="topo-box search-box"><input type="text" id="input-busca" placeholder="Buscar Nome, CPF, Protocolo..."><button onclick="realizarBusca()" class="btn-search" title="Pesquisar">🔍</button></div>
+            </div>
+            <div class="user-controls" style="display: flex; align-items: center;">
+                <div id="user-display" style="display: flex; align-items: center;"></div>
+                <button onclick="abrirAdmin()" class="btn-header btn-admin" title="Painel Administrativo">⚙️ Admin</button>
+                <button onclick="fazerLogout()" class="btn-header btn-exit" title="Sair">🚪 Sair</button>
+            </div>
+        </div>
+    </header>
 
-    <div class="container">
-        <a href="https://sanozuke18.github.io/controle-estoque/" class="card stock" target="_blank">
-            <svg class="icon-svg" viewBox="0 0 24 24">
-                <path d="M20 2H4c-1 0-2 .9-2 2v3.01c0 .72.43 1.34 1 1.69V20c0 1.1 1.1 2 2 2h14c.9 0 2-.9 2-2V8.7c.57-.35 1-.97 1-1.69V4c0-1.1-1-2-2-2zm-1 18H5V9h14v11zm1-13H4V4h16v3z"/>
-            </svg>
-            <h2>Controle de Estoque</h2>
-            <p>Gestão de Materiais</p>
-        </a>
+    <div class="main-content">
+        <div class="controles">
+            <button onclick="abrirModal()" class="btn-novo">+ Novo Requerimento</button>
+        </div>
 
-        <a href="https://semobiniteroi.github.io/sistema-funerario-niteroi/" class="card admin" target="_blank">
-            <svg class="icon-svg" viewBox="0 0 24 24">
-                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
-            </svg>
-            <h2>Sistema Funerário</h2>
-            <p>Painel Administrativo</p>
-        </a>
-
-        <a href="https://semobiniteroi.github.io/sistema-funerario-niteroi/consulta.html" class="card public" target="_blank">
-            <svg class="icon-svg" viewBox="0 0 24 24">
-                <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-            </svg>
-            <h2>Consulta Cidadão</h2>
-            <p>Sepultamentos e Protocolos de Exumação</p>
-        </a>
-
-        <a href="https://semobiniteroi.github.io/meus-projetos/exumacoes/" class="card exumacao" target="_blank">
-            <svg class="icon-svg" viewBox="0 0 24 24">
-                <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
-            </svg>
-            <h2>Coordenação dos Cemitérios</h2>
-            <p>Processos e Serviços Cemiteriais</p>
-        </a>
+        <div class="tabela-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="min-width: 200px;">Requerente / Contato</th>
+                        <th style="min-width: 200px;">Falecido(a)</th>
+                        <th>Cemitério</th>
+                        <th>Serviço Requerido</th>
+                        <th style="min-width: 140px;">Protocolo / Processo</th>
+                        <th>Data Registro</th>
+                        <th style="text-align: right; min-width: 170px;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="tabela-corpo"></tbody>
+            </table>
+        </div>
     </div>
 
-    <div class="footer">
-        &copy; 2026 - Hub de Sistemas | SEMOBI Niterói
+    <div id="modal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>Registro de Requerimento / Declarações</h3>
+                <span class="close" onclick="fecharModal()">×</span>
+            </div>
+            
+            <form id="form-atendimento">
+                <input type="hidden" id="docId"> 
+                <input type="hidden" id="protocolo"> 
+                <input type="hidden" id="atendente_sistema"> 
+                
+                <div class="form-grid" style="max-height: 60vh; overflow-y: auto; padding-right: 10px; padding: 30px;">
+                    
+                    <div class="section-title">Andamento do Processo (Status)</div>
+                    <div class="input-group span-4" style="flex-direction: row; gap: 15px; flex-wrap: wrap;">
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_doc_ausentes" onchange="document.getElementById('div_doc_ausentes').style.display = this.checked ? 'block' : 'none'"> Documentos ausentes</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_deferido"> Processo deferido</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_procedido"> Serviço procedido</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_aguardando"> Aguardando retorno</label>
+                        <label style="display:flex; align-items:center; gap:5px; font-weight: normal; cursor: pointer;"><input type="checkbox" id="chk_arquivado"> Arquivado</label>
+                    </div>
+                    <div class="input-group span-4" id="div_doc_ausentes" style="display:none; margin-top: 5px;">
+                        <label>Quais documentos estão faltando?</label>
+                        <input type="text" id="doc_ausentes_desc" placeholder="Ex: Cópia do RG, Certidão de Óbito...">
+                    </div>
+
+                    <div class="section-title">Dados do Requerente</div>
+                    <div class="input-group span-2"><label>Nome do Requerente</label><input type="text" id="resp_nome" required></div>
+                    
+                    <div class="input-group span-1" id="box-telefones">
+                        <label style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            Telefone(s) 
+                            <span style="color:#3699ff; cursor:pointer; font-size:10px; font-weight:bold;" onclick="addTelefone()" title="Adicionar outro número">➕ NOVO</span>
+                        </label>
+                        <input type="text" id="telefone" placeholder="(00) 00000-0000" required oninput="mascaraTelefone(this)" maxlength="15">
+                    </div>
+                    
+                    <div class="input-group span-1">
+                        <label>Grau Parentesco</label>
+                        <input type="text" id="parentesco" list="lista-parentescos" required autocomplete="off">
+                        <datalist id="lista-parentescos">
+                            <option value="Cônjuge"></option>
+                            <option value="Filho(a)"></option>
+                            <option value="Pai / Mãe"></option>
+                            <option value="Irmão / Irmã"></option>
+                            <option value="Neto(a)"></option>
+                            <option value="Sobrinho(a)"></option>
+                            <option value="Tio(a)"></option>
+                            <option value="Primo(a)"></option>
+                            <option value="Companheiro(a)"></option>
+                        </datalist>
+                    </div>
+                    
+                    <div class="input-group span-1"><label>RG</label><input type="text" id="rg" placeholder="Identidade"></div>
+                    
+                    <div class="input-group span-1">
+                        <label style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            CPF 
+                            <span style="color:#3699ff; cursor:pointer; font-size:10px; font-weight:bold;" onclick="buscarRequerentePorCPF()" title="Preencher dados caso já cadastrado">🔍 BUSCAR</span>
+                        </label>
+                        <input type="text" id="cpf" placeholder="000.000.000-00" oninput="aplicarMascaraCpfCnpj(this)" onblur="buscarRequerentePorCPF()">
+                    </div>
+                    
+                    <div class="input-group span-2"><label>Endereço</label><input type="text" id="endereco" required></div>
+                    
+                    <div class="input-group span-1"><label>Bairro</label><input type="text" id="bairro" required></div>
+                    <div class="input-group span-1"><label>Município</label><input type="text" id="municipio" required></div>
+                    <div class="input-group span-1"><label>CEP</label><input type="text" id="cep" placeholder="00000-000" maxlength="9" onblur="buscarCep()"></div>
+                    <div class="input-group span-1"><label>Número</label><input type="text" id="numero" required></div>
+                    
+                    <div class="input-group span-2"><label>Complemento</label><input type="text" id="complemento" placeholder="Ex: Apto 101, Bloco B..."></div>
+                    <div class="input-group span-2"><label>Autorizado a retirar/transladar</label><input type="text" id="autorizado" placeholder="(Deixe em branco para 'O PRÓPRIO REQUERENTE')"></div>
+
+                    <div class="section-title">Dados do Falecido(a) e Localização</div>
+                    <div class="input-group span-2"><label>Nome do(a) Falecido(a)</label><input type="text" id="nome_falecido" required></div>
+                    <div class="input-group span-1"><label>Data Sepultamento</label><input type="date" id="data_sepultamento"></div>
+                    <div class="input-group span-1">
+                        <label>Cemitério (Origem)</label>
+                        <select id="cemiterio" required onchange="window.toggleCemiterioOutro()">
+                            <option value="MARUÍ">MARUÍ</option>
+                            <option value="SÃO FRANCISCO">SÃO FRANCISCO</option>
+                            <option value="ITAIPU">ITAIPU</option>
+                            <option value="OUTRO">OUTRO</option>
+                        </select>
+                        <input type="text" id="cemiterio_outro" placeholder="Especifique o cemitério..." style="display:none; margin-top:5px; border-color:var(--primary-color);">
+                    </div>
+
+                    <div class="section-title">Dados Administrativos E-CIGA / GRM</div>
+                    <div class="input-group span-2"><label>Processo E-CIGA/SEI</label><input type="text" id="processo" placeholder="Ex: 99/9999/9999"></div>
+                    <div class="input-group span-2"><label>Nº Guia GRM</label><input type="text" id="grm" placeholder="Ex: 12345678"></div>
+
+                    <div class="section-title">Serviços e Localização (Requerimento)</div>
+                    <div class="input-group span-4">
+                        <label style="display:flex; justify-content:space-between; align-items:center; width:100%;">Serviço Requerido <span style="font-size:9px; color:#888;">(Segure CTRL p/ vários)</span></label>
+                        <select id="servico_requerido" required multiple size="5" style="height: auto; min-height: 90px; padding: 5px;">
+                            <option value="Exumação">Exumação</option>
+                            <option value="Saída de ossos">Saída de ossos</option>
+                            <option value="Entrada de ossos / cinzas">Entrada de ossos / cinzas</option>
+                            <option value="Permissão de uso">Permissão de uso</option>
+                            <option value="Certidão de permissão de uso">Certidão de permissão de uso</option>
+                            <option value="Licença com ônus para colocação de lapide">Licença com ônus para colocação de lapide</option>
+                            <option value="Recolhimento">Recolhimento</option>
+                            <option value="Permuta">Permuta</option>
+                            <option value="Certidão">Certidão</option>
+                            <option value="Revestimento">Revestimento</option>
+                            <option value="Outros">Outros</option>
+                        </select>
+                    </div>
+
+                    <div class="section-title">Sepultura de Origem</div>
+                    <div class="input-group span-2"><label>Tipo de Sepultura</label>
+                        <select id="tipo_sepultura" required>
+                            <option value="Carneiro de adulto">Carneiro de adulto</option>
+                            <option value="Carneiro de anjo">Carneiro de anjo</option>
+                            <option value="Gaveta de adulto">Gaveta de adulto</option>
+                            <option value="Gaveta de anjo">Gaveta de anjo</option>
+                            <option value="Cova rasa de adulto">Cova rasa de adulto</option>
+                            <option value="Cova rasa de anjo">Cova rasa de anjo</option>
+                            <option value="Nicho">Nicho</option>
+                            <option value="Nicho perpétuo">Nicho perpétuo</option>
+                            <option value="Sep perpétua">Sep perpétua</option>
+                        </select>
+                    </div>
+                    <div class="input-group span-1"><label>Nº Sepultura</label><input type="text" id="sepul" required></div>
+                    <div class="input-group span-1"><label>Quadra</label><input type="text" id="qd" placeholder="A, B, F, G, E..."></div>
+                    <div class="input-group span-4"><label>Proprietário (Origem Se Perpétua)</label><input type="text" id="proprietario"></div>
+                    
+                    <div class="input-group span-1"><label>Nº Lacre (Se houver)</label><input type="text" id="lacre" placeholder="Ex: 12345"></div>
+                    <div class="input-group span-3"><label>Serviço de Reforma (Se houver)</label><input type="text" id="servico_reforma" placeholder="Ex: Colocação de Mármore, Revestimento"></div>
+
+                    <div class="section-title">Destino (Apenas para Declarações de Recolhimento/Transferência)</div>
+                    <div class="input-group span-2"><label>Cemitério de Destino</label><input type="text" id="cemiterio_destino" placeholder="Ex: Cemitério de São Gonçalo"></div>
+                    <div class="input-group span-2"><label>Tipo de Sepultura (Destino)</label>
+                        <select id="destino_tipo_sepultura">
+                            <option value="">Selecione...</option>
+                            <option value="Carneiro de adulto">Carneiro de adulto</option>
+                            <option value="Carneiro de anjo">Carneiro de anjo</option>
+                            <option value="Gaveta de adulto">Gaveta de adulto</option>
+                            <option value="Gaveta de anjo">Gaveta de anjo</option>
+                            <option value="Cova rasa de adulto">Cova rasa de adulto</option>
+                            <option value="Cova rasa de anjo">Cova rasa de anjo</option>
+                            <option value="Nicho">Nicho</option>
+                            <option value="Nicho perpétuo">Nicho perpétuo</option>
+                            <option value="Sep perpétua">Sep perpétua</option>
+                        </select>
+                    </div>
+                    <div class="input-group span-1"><label>Nº Destino / Sepultura</label><input type="text" id="destino_local_nro" placeholder="Nº Nicho/Perpétua"></div>
+                    <div class="input-group span-1"><label>Quadra (Destino)</label><input type="text" id="destino_qd" placeholder="Ex: A, B..."></div>
+                    <div class="input-group span-1"><label>Livro Nº</label><input type="text" id="destino_livro"></div>
+                    <div class="input-group span-1"><label>Fls Nº</label><input type="text" id="destino_fls"></div>
+                    
+                    <div class="input-group span-4"><label>Proprietário / Nome de (Destino)</label><input type="text" id="destino_proprietario"></div>
+
+                    <div class="input-group span-4" style="margin-top: 10px;"><label>Assunto / Observações</label><input type="text" id="assunto" placeholder="Detalhes adicionais do requerimento"></div>
+                </div>
+                <div class="modal-footer-custom" style="padding:20px 30px;">
+                    <button type="button" class="btn-modal btn-cancelar" onclick="fecharModal()">Cancelar</button>
+                    <button type="submit" class="btn-modal btn-salvar">Salvar Todos os Dados</button>
+                </div>
+            </form>
+        </div>
     </div>
 
+    <div id="modal-liberacao" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 style="color: var(--danger);">Dados Administrativos (Liberação)</h3>
+                <span class="close" onclick="fecharModalLiberacao()">×</span>
+            </div>
+            
+            <form id="form-liberacao">
+                <input type="hidden" id="docIdLiberacao"> 
+                
+                <div class="form-grid" style="padding: 30px;">
+                    <p class="span-4" style="font-size: 11px; color: #666; margin-top:0;">Estes dados ficarão vinculados ao requerimento atual e sairão impressos no formulário de Liberação.</p>
+                    
+                    <div class="input-group span-2"><label>Processo Nº</label><input type="text" id="processo_lib" required></div>
+                    <div class="input-group span-2"><label>GRM Nº</label><input type="text" id="grm_lib" required></div>
+                    <div class="input-group span-4"><label>Quantia Paga (R$)</label><input type="text" id="valor_pago" placeholder="Ex: 45,72 (Quarenta e cinco reais e setenta...)" required></div>
+                    
+                    <div class="input-group span-4">
+                        <label style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            Texto "Referente a:"
+                            <span style="color:#3699ff; cursor:pointer; font-size:10px; font-weight:bold;" onclick="preencherReferenteAutomatico()" title="Auto-completar com base no Requerimento">✨ GERAR AUTOMÁTICO</span>
+                        </label>
+                        <textarea id="referente_a" rows="4" placeholder="Ex: EXUMAÇÃO E SAÍDA DE OSSOS DA GAVETA DE ADULTO N°383 ONDE FOI INUMADO..." required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer-custom" style="padding:20px 30px;">
+                    <button type="button" class="btn-modal btn-cancelar" onclick="fecharModalLiberacao()">Cancelar</button>
+                    <button type="submit" class="btn-modal btn-salvar" style="background-color: var(--danger);">Salvar Liberação</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-visualizar" class="modal">
+        <div class="modal-content" style="max-width: 720px;">
+            <div class="modal-header"><h3>Ações do Requerimento</h3><span class="close" onclick="fecharModalVisualizar()">×</span></div>
+            
+            <div id="resumo-dados" style="padding: 20px 30px; background-color: #f8f9fb; border-bottom: 1px solid #ebedf3; font-size: 13px; line-height: 1.6;"></div>
+
+            <div style="padding: 20px 30px; text-align: center;">
+                
+                <div style="background: #fdfdfd; padding: 15px; border-radius: 6px; border: 1px dashed #ccc; margin-bottom: 20px; text-align: left;">
+                    <label style="color:var(--primary-color); font-weight:bold; font-size:11px; text-transform:uppercase;">Gerar Declaração Específica</label>
+                    <div style="display:flex; gap:10px; margin-top:8px;">
+                        <select id="select_declaracao" style="flex:1; border: 1px solid #ccc; border-radius: 6px; padding: 8px;">
+                            <option value="saida_nicho_perpetuo">Saída de ossos do nicho perpétuo</option>
+                            <option value="saida_sep_perp">Saída dos ossos da sepultura perpétua</option>
+                            <option value="saida_lacre">Saída da ossada sob lacre</option>
+                            <option value="exumacao_saida">Exumação e saída dos restos mortais</option>
+                            <option value="exumacao_recolhimento_nicho_perp">Exumação e recolhimento da ossada ao nicho perpétuo</option>
+                            <option value="exumacao_recolhimento_nicho_adq">Exumação e recolhimento da ossada ao nicho a ser adquirido</option>
+                            <option value="exumacao_recolhimento_sep_perp">Exumação e recolhimento da ossada a sepultura perpétua</option>
+                            <option value="recolhimento_lacre_nicho_perp">Recolhimento da ossada ao nicho perpétuo (Com lacre)</option>
+                            <option value="entrada_recolhimento_nicho_perp">Entrada de restos mortais e recolhimento ao nicho perpétuo</option>
+                            <option value="entrada_recolhimento_sep_perp">Entrada de restos mortais e recolhimento a sepultura perpétua</option>
+                            <option value="entrada_permissao_nicho">Entrada de restos mortais e permissão de uso de nicho</option>
+                            <option value="entrada_cinzas_sep_perp">Entrada de cinzas e recolhimento a sepultura perpétua</option>
+                            <option value="entrada_cinzas_nicho_perp">Entrada de cinzas e recolhimento ao nicho perpétuo</option>
+                            <option value="permuta_nicho">Permuta de nicho</option>
+                            <option value="permuta_sepultura">Permuta de sepultura</option>
+                            <option value="permissao_uso_sepultura">Permissão de uso de sepultura</option>
+                            <option value="autorizacao_placa_nicho">Autorização para colocação de placa no nicho perpétuo</option>
+                            <option value="servico_reforma_sep_perp">Serviço na sepultura perpétua (Reforma)</option>
+                            <option value="reparo_diversos">Reparo diversos na sepultura perpétua</option>
+                            <option value="capacidade_nicho">Termo para capacidade do nicho e colocação de placa</option>
+                            <option value="termo_capacidade_nicho_perpetuo">Termo de capacidade do nicho perpétuo</option>
+                            <option value="termo_entrada_ossos_mumificados">Termo de entrada de ossos mumificados</option>
+                            <option value="termo_lapide_perpetuo">Termo para colocação de lápide em perpétuos</option>
+                            <option value="termo_reforma_perpetuo">Termo para reformas ou serviços em perpétuos</option>
+                            <option value="declaracao_residencia">Declaração de residência</option>
+                            <option value="cancelamento_processo">Termo de cancelamento de processo</option>
+                        </select>
+                        <button type="button" class="btn-modal" style="background-color: #34495e; color: white;" onclick="imprimirDeclaracao()">📄 Gerar e Imprimir</button>
+                    </div>
+                </div>
+
+                <div class="modal-footer-custom" style="border:none; justify-content: center; padding-top: 0;">
+                    <button type="button" class="btn-modal btn-sign-fam" onclick="abrirModalAssinatura('responsavel')">✍️ Assinar Requerente</button>
+                    <button type="button" class="btn-modal btn-sign-func" onclick="abrirModalAssinatura('atendente')">✍️ Assinar Equipe</button>
+                    <button type="button" class="btn-modal btn-print-req" onclick="imprimirRequerimento()">📄 Form. Requerimento</button>
+                    <button type="button" class="btn-modal btn-print-lib" onclick="imprimirLiberacao()">📄 Form. Liberação</button>
+                    <button type="button" class="btn-modal" style="background-color: #25D366; color: white;" onclick="window.enviarWhatsApp()">📱 WhatsApp</button>
+                    <button type="button" class="btn-modal" style="background-color: #27ae60; color: white;" onclick="abrirModalGRM()">💸 Emitir GRM</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-assinatura" class="modal">
+        <div class="modal-content" style="max-width: 500px; text-align: center;">
+            <h3 id="titulo-assinatura">Assinatura</h3>
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Assine abaixo usando o dedo ou mouse.</p>
+            <div style="border: 2px solid #333; background: #fff; display: inline-block;">
+                <canvas id="signature-pad" width="400" height="200"></canvas>
+            </div>
+            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                <button onclick="limparAssinatura()" class="btn-modal btn-cancelar" style="background: #f44336; color: white;">Limpar</button>
+                <button onclick="salvarAssinatura()" class="btn-modal btn-salvar">Confirmar</button>
+            </div>
+            <button onclick="fecharModalAssinatura()" class="close" style="position: absolute; top: 10px; right: 15px;">×</button>
+        </div>
+    </div>
+
+    <div id="modal-grm" class="modal">
+        <div class="modal-content" style="width: 95%; max-width: 1200px; height: 90vh; display: flex; flex-direction: column; padding: 0; overflow: hidden;">
+            <div class="modal-header" style="background-color: #f8f9fb; display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <h3 style="margin: 0; color: #333;">Emissão de GRM</h3>
+                    <button onclick="window.open('https://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento', '_blank')" class="btn-novo" style="background-color: #f39c12; padding: 6px 12px; font-size: 11px;">🔗 Abrir em Nova Aba</button>
+                </div>
+                <span class="close" onclick="fecharModalGRM()" style="margin-top: -5px;">×</span>
+            </div>
+            <div style="flex-grow: 1; width: 100%; background: #fff;">
+                <iframe src="https://grm.fazenda.niteroi.rj.gov.br/guiarecolhimento" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+    </div>
+    
+    <div id="modal-unir" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>📁 Juntar PDFs (E-CIGA)</h3>
+                <span class="close" onclick="window.fecharModalUnir()">×</span>
+            </div>
+            <div style="padding: 20px;">
+                <p style="font-size: 13px; color: #666; margin-top: 0;">Selecione os PDFs gerados/baixados para uni-los em um único arquivo de envio.</p>
+                <input type="hidden" id="unir-protocolo-row">
+                <div style="display:flex; flex-direction: column; gap:10px; margin-top:15px;">
+                    <input type="file" id="input-pdfs-row" multiple accept="application/pdf" class="admin-input-modern">
+                    <button type="button" class="btn-novo" style="background-color: #8e44ad; justify-content: center; width: 100%; padding: 12px;" onclick="window.mesclarPDFsRow()">🔗 Unir PDFs</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-admin" class="modal">
+        <div class="modal-content" style="max-width: 900px; height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header"><h3>Painel Administrativo</h3><span class="close" onclick="fecharModalAdmin()">×</span></div>
+            
+            <div class="tab-header">
+                <button class="tab-btn active" onclick="abrirAba('tab-equipe')">👥 Equipe</button>
+                <button class="tab-btn" onclick="abrirAba('tab-contribuintes')">📇 Contribuintes</button>
+                <button class="tab-btn" onclick="abrirAba('tab-backup')">💾 Backup</button>
+                <button class="tab-btn" onclick="abrirAba('tab-stats')">📊 Estatísticas</button>
+                <button class="tab-btn" onclick="abrirAba('tab-logs')">🕵️ Auditoria</button>
+            </div>
+            
+            <div class="tab-content-area" style="flex-grow: 1; overflow-y: auto; padding: 20px;">
+                
+                <div id="tab-equipe" class="tab-pane active">
+                    <div id="box-novo-usuario" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #edf2f9;">
+                        <strong style="color: #3699ff; display: block; margin-bottom: 15px; font-size: 14px;">Novo Usuário:</strong>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <label class="admin-label" style="color: #3699ff;">Nome Completo</label>
+                                <input type="text" id="novo-nome" class="admin-input-modern" placeholder="Ex: João Silva">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #3699ff;">Login / WhatsApp</label>
+                                <input type="text" id="novo-login" class="admin-input-modern" placeholder="Ex: joao.silva">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #3699ff;">E-mail</label>
+                                <input type="email" id="novo-email" class="admin-input-modern" placeholder="Ex: joao@email.com">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 12px;">
+                            <div>
+                                <label class="admin-label" style="color: #3699ff;">Senha</label>
+                                <input type="password" id="nova-senha" class="admin-input-modern" placeholder="Senha segura">
+                            </div>
+                            <button onclick="adicionarFuncionario()" class="admin-btn-modern" style="height: 38px;">+ Adicionar Usuário</button>
+                        </div>
+                    </div>
+
+                    <div id="div-editar-usuario" class="hidden" style="background: #fffaf0; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffeeba;">
+                        <strong style="color: #856404; display: block; margin-bottom: 15px; font-size: 14px;">✏️ Editando Usuário:</strong>
+                        <input type="hidden" id="edit-id">
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Nome Completo</label>
+                                <input type="text" id="edit-nome" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Nome Completo">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Login (Inalterável)</label>
+                                <input type="text" id="edit-login" class="admin-input-modern" style="border-color:#e5d8b3; background:#f9f6ef; cursor:not-allowed;" placeholder="Login" disabled>
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">E-mail</label>
+                                <input type="email" id="edit-email" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="E-mail">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Nova Senha</label>
+                                <input type="text" id="edit-senha" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Nova Senha">
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                                <button onclick="cancelarEdicao()" class="btn-modal btn-cancelar" style="flex: 1; padding: 10px 20px; border-radius: 6px; margin: 0; height: 38px;">Cancelar</button>
+                                <button onclick="salvarEdicaoUsuario()" class="btn-modal btn-salvar" style="flex: 1; padding: 10px 20px; border-radius: 6px; margin: 0; height: 38px;">Salvar</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="overflow-x: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+                        <table class="admin-user-table">
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>Login / Contato</th>
+                                    <th>Senha</th>
+                                    <th style="text-align: right;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-equipe"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-contribuintes" class="tab-pane">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 15px;">
+                        <h4 style="margin: 0; color: #5c677d;">Buscar Contribuintes</h4>
+                        <div style="display:flex; gap: 10px; width: 50%;">
+                            <input type="text" id="busca-contribuinte-admin" class="admin-input-modern" placeholder="Buscar Nome, CPF, RG ou Telefone..." onkeypress="if(event.key==='Enter') window.buscarContribuintesAdmin()">
+                            <button onclick="window.buscarContribuintesAdmin()" class="btn-novo" style="padding: 0 15px;">🔍 Buscar</button>
+                        </div>
+                    </div>
+
+                    <div id="div-editar-contribuinte" class="hidden" style="background: #fffaf0; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffeeba;">
+                        <strong style="color: #856404; display: block; margin-bottom: 15px; font-size: 14px;">✏️ Editando Dados do Contribuinte:</strong>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px;">
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Nome Completo</label>
+                                <input type="text" id="edit-cont-nome" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Nome Completo">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">CPF</label>
+                                <input type="text" id="edit-cont-cpf" class="admin-input-modern" style="border-color:#e5d8b3; background:#f9f6ef; cursor:not-allowed;" placeholder="CPF" disabled>
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">RG</label>
+                                <input type="text" id="edit-cont-rg" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="RG">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Telefone</label>
+                                <input type="text" id="edit-cont-tel" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Telefone">
+                            </div>
+                            
+                            <div>
+                                <label class="admin-label" style="color: #856404;">CEP</label>
+                                <input type="text" id="edit-cont-cep" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="CEP">
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label class="admin-label" style="color: #856404;">Endereço</label>
+                                <input type="text" id="edit-cont-end" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Endereço">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Número</label>
+                                <input type="text" id="edit-cont-num" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Número">
+                            </div>
+                            
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Complemento</label>
+                                <input type="text" id="edit-cont-comp" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Complemento">
+                            </div>
+                            <div>
+                                <label class="admin-label" style="color: #856404;">Bairro</label>
+                                <input type="text" id="edit-cont-bairro" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Bairro">
+                            </div>
+                            <div style="grid-column: span 2;">
+                                <label class="admin-label" style="color: #856404;">Município</label>
+                                <input type="text" id="edit-cont-mun" class="admin-input-modern" style="border-color:#e5d8b3;" placeholder="Município">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 15px;">
+                            <button onclick="window.cancelarEdicaoContribuinte()" class="btn-modal btn-cancelar" style="padding: 10px 20px; border-radius: 6px; margin: 0;">Cancelar</button>
+                            <button onclick="window.salvarEdicaoContribuinte()" class="btn-modal btn-salvar" style="padding: 10px 20px; border-radius: 6px; margin: 0;">Salvar Atualização Global</button>
+                        </div>
+                    </div>
+
+                    <div style="overflow-x: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+                        <table class="admin-user-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>CPF / RG</th>
+                                    <th>Contato</th>
+                                    <th>Endereço</th>
+                                    <th style="text-align: right;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-contribuintes">
+                                <tr><td colspan="5" style="text-align:center; padding: 20px;">Use a busca acima para encontrar contribuintes cadastrados.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="tab-backup" class="tab-pane">
+                    <h4 style="margin-top:0; color: #5c677d;">Backup e Exportação de Dados</h4>
+                    <p style="font-size: 13px; color: #666; margin-bottom: 25px;">Faça o backup completo do banco de dados ou exporte relatórios específicos contendo Nome, CPF, Processo e GRM.</p>
+                    
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        <div style="background: #f8f9fa; padding: 25px; border-radius: 8px; border: 1px solid #edf2f9; flex: 1; min-width: 280px; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <strong style="color: #3699ff; display: block; margin-bottom: 10px; font-size: 15px;">📦 Backup Completo do Sistema</strong>
+                                <p style="font-size: 12px; color: #777; margin-bottom: 20px; line-height: 1.5;">Baixa todos os dados de requerimentos do banco em um arquivo estruturado bruto (JSON) para segurança e eventual restauração de sistema.</p>
+                            </div>
+                            <button onclick="window.gerarBackupJSON()" class="admin-btn-modern" style="width: 100%;">📥 Baixar Backup Seguro (JSON)</button>
+                        </div>
+                        
+                        <div style="background: #fffaf0; padding: 25px; border-radius: 8px; border: 1px solid #ffeeba; flex: 1; min-width: 280px; display: flex; flex-direction: column; justify-content: space-between;">
+                            <div>
+                                <strong style="color: #856404; display: block; margin-bottom: 10px; font-size: 15px;">📄 Exportar Relatório Específico</strong>
+                                <p style="font-size: 12px; color: #777; margin-bottom: 20px; line-height: 1.5;">Gera e baixa um documento formatado contendo apenas: <b>Nome, CPF, Nº Processo e Nº GRM</b> de todos os requerimentos registrados.</p>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button onclick="window.exportarDadosExcel()" class="admin-btn-modern" style="background: #27ae60; flex: 1;">📊 Baixar Excel</button>
+                                <button onclick="window.exportarDadosPDF()" class="admin-btn-modern" style="background: #c0392b; flex: 1;">📄 Baixar PDF</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-stats" class="tab-pane">
+                    <div class="controles-topo" style="margin-bottom: 20px; justify-content: center; gap: 10px; flex-wrap: wrap; align-items: center; display:flex;">
+                        <button onclick="carregarEstatisticas('hoje')" class="btn-imprimir">Hoje (1 Dia)</button>
+                        <button onclick="carregarEstatisticas('7')" class="btn-imprimir">7 Dias</button>
+                        <button onclick="carregarEstatisticas('15')" class="btn-imprimir">15 Dias</button>
+                        <button onclick="carregarEstatisticas('30')" class="btn-imprimir">30 Dias</button>
+                        <button onclick="carregarEstatisticas('mes')" class="btn-imprimir">Este Mês</button>
+                        
+                        <div style="width: 1px; height: 25px; background: #ccc; margin: 0 5px;"></div>
+                        
+                        <div style="display:flex; align-items:center; gap:5px; background: #fff; padding: 4px 8px; border-radius: 6px; border: 1px solid #ebedf3;">
+                            <span style="font-size:11px; font-weight:bold; color:#666;">DE:</span>
+                            <input type="date" id="data-inicio-stats" style="border:none; outline:none; font-size:12px; color:#333; background:transparent;">
+                            <span style="font-size:11px; font-weight:bold; color:#666;">ATÉ:</span>
+                            <input type="date" id="data-fim-stats" style="border:none; outline:none; font-size:12px; color:#333; background:transparent;">
+                            <button onclick="carregarEstatisticas('custom')" class="btn-novo" style="padding:4px 8px; font-size:11px; margin-left:5px; background-color:#34495e;">Filtrar</button>
+                        </div>
+
+                        <div style="width: 1px; height: 25px; background: #ccc; margin: 0 5px;"></div>
+                        <button onclick="baixarRelatorioCompleto()" class="btn-novo" style="background-color: #1e3a8a;">📊 Baixar Base</button>
+                        <button onclick="baixarExcel()" class="btn-novo" style="background-color: #27ae60;">📥 Excel</button>
+                    </div>
+                    
+                    <div class="dashboard-grid">
+                        <div class="kpi-card">
+                            <h4 class="kpi-title">Total de Requerimentos</h4>
+                            <p id="kpi-total" class="kpi-value">0</p>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid" style="margin-top: 20px;">
+                        <div class="card-chart large">
+                            <h5 style="margin-top:0; margin-bottom:15px; color:#555; font-size:14px;">Serviços Mais Realizados</h5>
+                            <div class="chart-wrapper"><canvas id="grafico-servicos"></canvas></div>
+                        </div>
+                        <div class="card-chart">
+                            <h5 style="margin-top:0; margin-bottom:15px; color:#555; font-size:14px;">Divisão por Cemitério</h5>
+                            <div class="chart-wrapper"><canvas id="grafico-cemiterios"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-logs" class="tab-pane">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 15px;">
+                        <h4>Log de Auditoria e Alterações</h4>
+                        <div style="display:flex; gap: 10px;">
+                            <button onclick="baixarLogsExcel()" class="btn-novo" style="background-color:#27ae60; padding: 5px 10px; font-size:12px;">📥 Excel</button>
+                            <button onclick="baixarLogsPDF()" class="btn-novo" style="background-color:#c0392b; padding: 5px 10px; font-size:12px;">📄 PDF</button>
+                            <button onclick="carregarLogs()" class="btn-imprimir" style="padding: 5px 10px; font-size:12px;">🔄 Atualizar</button>
+                        </div>
+                    </div>
+                    <table class="table-logs">
+                        <thead>
+                            <tr style="background:#eee;">
+                                <th>Data/Hora</th>
+                                <th>Usuário</th>
+                                <th>Ação / Detalhes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabela-logs"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
