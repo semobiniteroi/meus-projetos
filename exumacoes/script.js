@@ -66,7 +66,7 @@ window.addTelefone = (val = "") => {
 }
 window.mascaraTelefone = el => { let v = el.value.replace(/\D/g, ''); el.value = !v ? '' : v.length <= 10 ? v.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{4})(\d)/, "$1-$2") : v.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2").substring(0, 15); };
 window.aplicarMascaraCpfCnpj = el => { let v = el.value.replace(/\D/g, ""); el.value = v.length <= 11 ? v.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2") : v.substring(0, 14).replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d{1,2})$/, "$1-$2"); };
-window.toggleCemiterioOutro = () => { const sel = _el('cemiterio'), inp = _el('cemiterio_outro'); if(sel && inp) { inp.style.display = sel.value === 'OUTRO' ? 'block' : 'none'; inp.required = sel.value === 'OUTRO'; if(sel.value !== 'OUTRO') inp.value = ''; } };
+window.toggleCemiterioOutro = () => { const sel = _el('cemiterio'), inp = _el('cemiterio_outro'), tSep = _el('tipo_sepultura'), nSep = _el('sepul'); if(sel && inp) { const isOutro = sel.value === 'OUTRO'; inp.style.display = isOutro ? 'block' : 'none'; inp.required = isOutro; if(!isOutro) inp.value = ''; if(tSep) tSep.required = !isOutro; if(nSep) nSep.required = !isOutro; } };
 
 // --- GRM & ASSINATURA ---
 window.abrirModalGRM = () => safeDisplay('modal-grm', 'block');
@@ -142,7 +142,7 @@ window.abrirAba = id => {
     document.querySelectorAll('.tab-pane').forEach(e => e.classList.remove('active')); _el(id).classList.add('active');
     document.querySelectorAll('.tab-header .tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelector(`.tab-header .tab-btn[onclick="abrirAba('${id}')"]`)?.classList.add('active');
-    if(id==='tab-equipe') window.listarEquipe(); if(id==='tab-logs') window.carregarLogs(); if(id==='tab-stats') window.carregarEstatisticas('7'); if(id==='tab-contribuintes') setTimeout(() => _el('busca-contribuinte-admin').focus(), 100);
+    if(id==='tab-equipe') window.listarEquipe(); if(id==='tab-logs') window.carregarLogs(); if(id==='tab-stats') window.carregarEstatisticas('hoje'); if(id==='tab-contribuintes') setTimeout(() => _el('busca-contribuinte-admin').focus(), 100);
 }
 
 // --- ADMIN: CONTRIBUINTES ---
@@ -268,10 +268,29 @@ window.baixarExcel = () => { if(dadosEstatisticasExportacao.length) XLSX.writeFi
 
 // --- ADMIN: ESTATÍSTICAS ---
 window.carregarEstatisticas = (modo) => {
-    let dInicio = new Date(), ds = "";
-    if (modo === 'mes') { dInicio = new Date(dInicio.getFullYear(), dInicio.getMonth(), 1); ds = dInicio.toISOString(); } 
-    else { dInicio.setDate(dInicio.getDate() - parseInt(modo)); ds = dInicio.toISOString(); }
-    getDB().collection("requerimentos_exumacao").where("data_registro", ">=", ds).onSnapshot(snap => {
+    let dInicio = new Date(), ds = "", de = "";
+    
+    if (modo === 'mes') { 
+        dInicio = new Date(dInicio.getFullYear(), dInicio.getMonth(), 1); 
+        ds = dInicio.toISOString(); 
+    } else if (modo === 'hoje') {
+        dInicio.setHours(0,0,0,0);
+        ds = dInicio.toISOString();
+    } else if (modo === 'custom') {
+        let dtI = _val('data-inicio-stats');
+        let dtF = _val('data-fim-stats');
+        if(!dtI || !dtF) return alert("Preencha as duas datas para filtrar o período específico.");
+        ds = new Date(dtI + "T00:00:00").toISOString();
+        de = new Date(dtF + "T23:59:59.999Z").toISOString();
+    } else { 
+        dInicio.setDate(dInicio.getDate() - parseInt(modo)); 
+        ds = dInicio.toISOString(); 
+    }
+    
+    let query = getDB().collection("requerimentos_exumacao").where("data_registro", ">=", ds);
+    if(de) query = query.where("data_registro", "<=", de);
+
+    query.onSnapshot(snap => {
         let servicos = {}, cemiterios = {}, total = 0;
         snap.forEach(doc => {
             const d = doc.data(); total++;
@@ -341,9 +360,9 @@ function renderizarTabela(lista) {
         let cemDisplay = i.cemiterio==='OUTRO'?i.cemiterio_outro:i.cemiterio;
         
         tb.innerHTML += `<tr onclick="window.visualizarDocumentos('${i.id}')">
-            <td style="vertical-align:middle;"><b>${i.resp_nome?.toUpperCase()||'-'}</b><br><span style="font-size:11px;">📞 Tel: ${tl}</span></td>
-            <td style="vertical-align:middle;">👤 <b>${i.nome_falecido?.toUpperCase()||'-'}</b></td>
-            <td style="vertical-align:middle;">📍 ${cemDisplay}</td>
+            <td style="vertical-align:middle;"><b>${i.resp_nome?.toUpperCase()||'-'}</b><br><span style="font-size:11px;">Tel: ${tl}</span></td>
+            <td style="vertical-align:middle;"><b>${i.nome_falecido?.toUpperCase()||'-'}</b></td>
+            <td style="vertical-align:middle;">${cemDisplay}</td>
             <td style="vertical-align:middle;">${i.servico_requerido||'-'}</td>
             <td style="vertical-align:middle; font-size:13px; line-height: 1.5;">
                 <div style="color: #3699ff;"><b>Prot:</b> <span style="font-weight:bold;">${i.protocolo||'-'}</span></div>
@@ -524,7 +543,7 @@ window.imprimirDeclaracao = () => {
         case "saida_sep_perp": tit="Saída os ossos da sepultura perpétua"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a retirar os restos mortais do(a) falecido(a) ${b(fal)} na sepultura perpétua (tipo) ${b(tO)}, nº ${b(sO)}, da quadra ${b(qO)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)} para o Cemitério ${b(cD)}.`; break;
         case "permuta_sepultura": tit="Permuta de sepultura"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a permutar a sepultura ${b(tO)} n° ${b(sO)} registrado no livro nº ${b(dL)}, às fls nº ${b(dF)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)} e permutar por outra vaga no Cemitério do ${b(cD)}.`; break;
         case "reparo_diversos": tit="Reparo diversos"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a requerer reparo diversos na sepultura perpétua ${b(tO)} nº ${b(sO)}, registrado no livro nº ${b(dL)}, às fls nº ${b(dF)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)}.`; break;
-        case "capacidade_nicho": tit="Termo de responsabilidade para capacidade do nicho e colocação de placa"; txt=`tomo ciência que o nicho a ser adquirido através do processo n° ${b(proc)} possui capacidade somente para uma ossada.<br><br><b>Informação para quem abriu processo de colocação de placa:</b><br>• Não será aceita placas de identificação que não houver as mesmas dimensões do nicho;<br>• Os funcionários do Cemitério Municipal do Maruí são proibidos de fazer medição de pedra mármore / granito para nicho;<br>• A medição da placa será feita pelo funcionário da marmoraria/loja contratada pela família;<br>• Poderá ser aproveitada lápides oriundas de sepulturas ou de entradas de restos mortais desde que esteja dentro dos padrões mencionados acima;<br>• O funcionário (pedreiro) do Cemitério colocará a placa sem custo adicional;<br>• Não poderá colocar placas de azulejos, plástico ou inox; Só poderá ser placa de mármore/granito;<br>• O recibo entregue após o pagamento tem validade de 90 (NOVENTA) dias.<br><br><b>Obs.:</b> Sendo assim, me responsabilizo por qualquer eventualidade.`; break;
+        case "capacidade_nicho": tit="Termo de responsabilidade para capacidade do nicho e colocação de placa"; txt=`tomo ciência que o nicho a ser adquirido através do processo n° ${b(proc)} possui capacidade somente para uma ossada.<br><br><div style="margin-bottom: 15px;"><input type="checkbox" style="width: 15px; height: 15px; vertical-align: middle;"> <span style="vertical-align: middle; margin-left: 5px;">No momento não desejo iniciar o processo para colocação de lápide.</span></div><b>Informação para quem abriu processo de colocação de placa:</b><br>• Não será aceita placas de identificação que não houver as mesmas dimensões do nicho;<br>• Os funcionários do Cemitério Municipal do Maruí são proibidos de fazer medição de pedra mármore / granito para nicho;<br>• A medição da placa será feita pelo funcionário da marmoraria/loja contratada pela família;<br>• Poderá ser aproveitada lápides oriundas de sepulturas ou de entradas de restos mortais desde que esteja dentro dos padrões mencionados acima;<br>• O funcionário (pedreiro) do Cemitério colocará a placa sem custo adicional;<br>• Não poderá colocar placas de azulejos, plástico ou inox; Só poderá ser placa de mármore/granito;<br>• O recibo entregue após o pagamento tem validade de 90 (NOVENTA) dias.<br><br><b>Obs.:</b> Sendo assim, me responsabilizo por qualquer eventualidade.`; break;
         case "recolhimento_lacre_nicho_perp": tit="Recolhimento da ossada ao nicho perpétuo"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a solicitar o recolhimento dos restos mortais do(a) falecido(a) ${b(fal)} exumados e identificados sob lacre de nº ${b(lacre)} que se encontravam na sepultura (tipo) ${b(tO)}, nº ${b(sO)}, quadra ${b(qO)}, que se encontra no Cemitério ${b(cO)} e recolher a ossada ao nicho perpétuo nº ${b(dN)}, registrado no livro nº ${b(dL)}, as fls. ${b(dF)}, em nome de ${b(dP)} no Cemitério do ${b(cD)}.`; break;
         case "saida_lacre": tit="Saída da ossada sob lacre"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a solicitar o recolhimento dos restos mortais do(a) falecido(a) ${b(fal)} exumados e identificados sob lacre de nº ${b(lacre)} que se encontravam na sepultura (tipo) ${b(tO)}, nº ${b(sO)}, qd ${b(qO)}, que se encontra no Cemitério ${b(cO)} e saída dos ossos para o Cemitério ${b(cD)}.`; break;
         case "permuta_nicho": tit="Permuta de nicho"; txt=`Autorizo o(a) Sr(a) ${b(aut)} a transladar os restos mortais do(a) falecido(a) ${b(fal)} no nicho perpétuo nº ${b(sO)}, registrado no livro nº ${b(dL)}, às fls nº ${b(dF)}, em nome de ${b(pO)} que se encontra no Cemitério ${b(cO)} e permutar por um nicho vago no Cemitério do ${b(cD)}.`; break;

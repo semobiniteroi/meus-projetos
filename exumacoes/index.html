@@ -616,12 +616,25 @@
 
                 <div id="tab-stats" class="tab-pane">
                     <div class="controles-topo" style="margin-bottom: 20px; justify-content: center; gap: 10px; flex-wrap: wrap; align-items: center; display:flex;">
+                        <button onclick="carregarEstatisticas('hoje')" class="btn-imprimir">Hoje (1 Dia)</button>
                         <button onclick="carregarEstatisticas('7')" class="btn-imprimir">7 Dias</button>
+                        <button onclick="carregarEstatisticas('15')" class="btn-imprimir">15 Dias</button>
                         <button onclick="carregarEstatisticas('30')" class="btn-imprimir">30 Dias</button>
                         <button onclick="carregarEstatisticas('mes')" class="btn-imprimir">Este Mês</button>
-                        <div style="width: 1px; height: 25px; background: #ccc; margin: 0 10px;"></div>
-                        <button onclick="baixarRelatorioCompleto()" class="btn-novo" style="background-color: #1e3a8a;">📊 Baixar Base Completa</button>
-                        <button onclick="baixarExcel()" class="btn-novo" style="background-color: #27ae60;">📥 Excel (Visual)</button>
+                        
+                        <div style="width: 1px; height: 25px; background: #ccc; margin: 0 5px;"></div>
+                        
+                        <div style="display:flex; align-items:center; gap:5px; background: #fff; padding: 4px 8px; border-radius: 6px; border: 1px solid #ebedf3;">
+                            <span style="font-size:11px; font-weight:bold; color:#666;">DE:</span>
+                            <input type="date" id="data-inicio-stats" style="border:none; outline:none; font-size:12px; color:#333; background:transparent;">
+                            <span style="font-size:11px; font-weight:bold; color:#666;">ATÉ:</span>
+                            <input type="date" id="data-fim-stats" style="border:none; outline:none; font-size:12px; color:#333; background:transparent;">
+                            <button onclick="carregarEstatisticas('custom')" class="btn-novo" style="padding:4px 8px; font-size:11px; margin-left:5px; background-color:#34495e;">Filtrar</button>
+                        </div>
+
+                        <div style="width: 1px; height: 25px; background: #ccc; margin: 0 5px;"></div>
+                        <button onclick="baixarRelatorioCompleto()" class="btn-novo" style="background-color: #1e3a8a;">📊 Baixar Base</button>
+                        <button onclick="baixarExcel()" class="btn-novo" style="background-color: #27ae60;">📥 Excel</button>
                     </div>
                     
                     <div class="dashboard-grid">
