@@ -123,8 +123,14 @@ window.buscarRequerentePorCPF = () => {
 window.fazerLogin = () => {
     const u = _val('login-usuario'), p = _val('login-senha');
     if (p === "2026" && u === "admin") return window.liberarAcesso({nome:"Admin", login:"admin"});
-    getDB().collection("equipe").where("login", "==", u).where("senha", "==", p).get().then(snap => {
-        if (!snap.empty) window.liberarAcesso(snap.docs[0].data()); else safeDisplay('msg-erro-login', 'block');
+    
+    firebase.auth().signInWithEmailAndPassword(u, p).then(() => {
+        getDB().collection("equipe").where("email", "==", u).get().then(snap => {
+            if (!snap.empty) window.liberarAcesso(snap.docs[0].data()); 
+            else window.liberarAcesso({nome: u.split('@')[0], login: u, email: u});
+        });
+    }).catch(err => {
+        safeDisplay('msg-erro-login', 'block');
     });
 }
 window.checarLoginEnter = e => { if(e.key==='Enter') window.fazerLogin(); };
@@ -132,10 +138,18 @@ window.liberarAcesso = (usr) => {
     usuarioLogado = usr || usuarioLogado; sessionStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
     safeDisplay('tela-bloqueio', 'none');
     _el('user-display').innerHTML = `<div class="user-info" style="margin-right: 15px; text-align: left;"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(usuarioLogado.nome)}&background=random&color=fff&bold=true" class="user-avatar" style="width: 36px; height: 36px; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><div style="line-height: 1.2;"><div style="font-weight: 800; color: #3699ff; font-size: 13px; text-transform: uppercase;">${usuarioLogado.nome}</div><div style="font-size: 10px; color: #888;">${usuarioLogado.email || 'Atendente'}</div></div></div>`;
-    if(!_val('filtro-data')) _setVal('filtro-data', pegarDataISO());
+    if(!_val('filtro-data') && !_val('filtro-status')) _setVal('filtro-data', pegarDataISO());
     carregarTabela();
 }
-window.fazerLogout = () => { sessionStorage.removeItem('usuarioLogado'); window.location.reload(); }
+window.fazerLogout = () => { 
+    if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
+        firebase.auth().signOut().then(() => {
+            sessionStorage.removeItem('usuarioLogado'); window.location.reload(); 
+        });
+    } else {
+        sessionStorage.removeItem('usuarioLogado'); window.location.reload(); 
+    }
+}
 window.abrirAdmin = () => { safeDisplay('modal-admin', 'block'); window.abrirAba('tab-equipe'); }
 window.fecharModalAdmin = () => safeDisplay('modal-admin', 'none');
 window.abrirAba = id => {
@@ -273,6 +287,11 @@ window.carregarEstatisticas = (modo) => {
     if (modo === 'mes') { 
         dInicio = new Date(dInicio.getFullYear(), dInicio.getMonth(), 1); 
         ds = dInicio.toISOString(); 
+    } else if (modo === 'ano') { 
+        dInicio = new Date(dInicio.getFullYear(), 0, 1); 
+        ds = dInicio.toISOString(); 
+    } else if (modo === 'tudo') { 
+        ds = "2000-01-01T00:00:00.000Z"; 
     } else if (modo === 'hoje') {
         dInicio.setHours(0,0,0,0);
         ds = dInicio.toISOString();
@@ -287,17 +306,34 @@ window.carregarEstatisticas = (modo) => {
         ds = dInicio.toISOString(); 
     }
     
+    let diffDays = 0;
+    if(de && ds) {
+        diffDays = (new Date(de) - new Date(ds)) / (1000 * 3600 * 24);
+    } else if(ds && modo !== 'tudo') {
+        diffDays = (new Date() - new Date(ds)) / (1000 * 3600 * 24);
+    } else if(modo === 'tudo') {
+        diffDays = 9999;
+    }
+    
     let query = getDB().collection("requerimentos_exumacao").where("data_registro", ">=", ds);
     if(de) query = query.where("data_registro", "<=", de);
 
     query.onSnapshot(snap => {
-        let servicos = {}, cemiterios = {}, total = 0;
+        let servicos = {}, cemiterios = {}, evolucao = {}, total = 0;
         snap.forEach(doc => {
             const d = doc.data(); total++;
             if(d.servico_requerido) d.servico_requerido.split(',').forEach(s => { let k = s.trim().toUpperCase(); if(k) servicos[k] = (servicos[k]||0)+1; });
             let c = d.cemiterio?.toUpperCase() || "N/A"; if(c==='OUTRO') c = d.cemiterio_outro?.toUpperCase() || c; cemiterios[c] = (cemiterios[c]||0)+1;
+            
+            if(d.data_registro) {
+                let dateStr = d.data_registro.split('T')[0];
+                if (diffDays > 1000) dateStr = dateStr.substring(0, 4); 
+                else if (diffDays > 90) dateStr = dateStr.substring(0, 7);
+                evolucao[dateStr] = (evolucao[dateStr]||0)+1;
+            }
         });
         if(_el('kpi-total')) _el('kpi-total').innerText = total;
+        
         const buildChart = (id, type, dataObj, color) => {
             const sort = Object.entries(dataObj).sort((a,b)=>b[1]-a[1]).slice(0,10);
             if(_el(id) && window.Chart) {
@@ -305,14 +341,63 @@ window.carregarEstatisticas = (modo) => {
                 chartInstances[id] = new Chart(_el(id), { type, data: { labels: sort.map(x=>x[0]), datasets: [{ data: sort.map(x=>x[1]), backgroundColor: color, borderRadius: type==='bar'?6:0 }] }, options: { maintainAspectRatio: false, indexAxis: type==='bar'?'y':'x', plugins: { legend: { display: type==='doughnut', position:'bottom' } } } });
             } return sort;
         };
+        
+        const buildTimelineChart = (id, type, dataObj, color) => {
+            const sortedKeys = Object.keys(dataObj).sort();
+            const labels = sortedKeys.map(k => {
+                let p = k.split('-');
+                if(p.length === 1) return p[0];
+                if(p.length === 2) return `${p[1]}/${p[0]}`;
+                return `${p[2]}/${p[1]}/${p[0]}`;
+            });
+            const values = sortedKeys.map(k => dataObj[k]);
+            
+            if(_el(id) && window.Chart) {
+                if(chartInstances[id]) chartInstances[id].destroy();
+                chartInstances[id] = new Chart(_el(id), { 
+                    type, 
+                    data: { labels, datasets: [{ label: 'Atendimentos', data: values, backgroundColor: 'rgba(37, 99, 235, 0.2)', borderColor: 'rgba(37, 99, 235, 1)', fill: true, tension: 0.3, borderWidth: 2, pointBackgroundColor: 'rgba(37, 99, 235, 1)' }] }, 
+                    options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } } 
+                });
+            }
+        };
+
+        buildTimelineChart('grafico-evolucao', 'line', evolucao, 'rgba(37, 99, 235, 0.85)');
         dadosEstatisticasExportacao = buildChart('grafico-servicos', 'bar', servicos, 'rgba(54, 153, 255, 0.85)').map(([c,q]) => ({"Serviço": c, "Quantidade": q}));
         buildChart('grafico-cemiterios', 'doughnut', cemiterios, ['#3699ff', '#27ae60', '#f39c12', '#e74c3c', '#9b59b6']);
     });
 }
 
+// --- FILTRO DE STATUS NA TELA INICIAL ---
+window.filtrarPorStatus = () => {
+    const fs = _val('filtro-status');
+    if (!fs) {
+        if(!_val('filtro-data')) _setVal('filtro-data', pegarDataISO());
+        return window.carregarTabela();
+    }
+    
+    _setVal('filtro-data', '');
+    _setVal('input-busca', '');
+    
+    if(unsubscribe) unsubscribe(); 
+    
+    unsubscribe = getDB().collection("requerimentos_exumacao")
+        .orderBy("data_registro", "desc")
+        .limit(2000)
+        .onSnapshot(snap => {
+            let lista = [];
+            snap.forEach(doc => {
+                let d = doc.data(); d.id = doc.id;
+                if (d[fs] === true) lista.push(d);
+            }); 
+            renderizarTabela(lista);
+        });
+}
+
 // --- TABELA PRINCIPAL E BUSCA ---
 window.carregarTabela = () => {
-    if (unsubscribe) unsubscribe(); const fd = _val('filtro-data');
+    if (unsubscribe) unsubscribe(); 
+    const fd = _val('filtro-data');
     let q = getDB().collection("requerimentos_exumacao").orderBy("data_registro", "desc");
     if (fd) q = q.where("data_registro", ">=", fd).where("data_registro", "<=", fd + "T23:59:59.999Z"); else q = q.limit(50);
     unsubscribe = q.onSnapshot(snap => renderizarTabela(snap.docs.map(doc => ({...doc.data(), id: doc.id}))));
@@ -324,11 +409,13 @@ window.realizarBusca = () => {
     const fd = _el('filtro-data');
     
     if(!termoOriginal) { 
-        if(!_val('filtro-data')) _setVal('filtro-data', pegarDataISO()); 
+        if(!_val('filtro-data') && !_val('filtro-status')) _setVal('filtro-data', pegarDataISO()); 
+        if(_val('filtro-status')) return window.filtrarPorStatus();
         return carregarTabela(); 
     }
     
     _setVal('filtro-data', ''); 
+    _setVal('filtro-status', ''); 
     if(unsubscribe) unsubscribe(); 
     const tl = termo.replace(/[\.\-\/\(\)\s]/g, '');
     
@@ -485,7 +572,10 @@ if(formLib) formLib.onsubmit = e => { e.preventDefault(); const id=_val('docIdLi
 
 // --- EVENTOS E IMPRESSÕES ---
 window.onclick = e => { if(e.target===_el('modal-visualizar')) window.fecharModalVisualizar(); if(e.target===_el('modal-admin')) window.fecharModalAdmin(); if(e.target===_el('modal-unir')) window.fecharModalUnir(); }
-document.addEventListener('DOMContentLoaded', () => { if(_el('filtro-data')) _el('filtro-data').addEventListener('change', window.carregarTabela); const s=sessionStorage.getItem('usuarioLogado'); if(s) window.liberarAcesso(JSON.parse(s)); });
+document.addEventListener('DOMContentLoaded', () => { 
+    if(_el('filtro-data')) _el('filtro-data').addEventListener('change', () => { _setVal('filtro-status', ''); window.carregarTabela(); }); 
+    const s=sessionStorage.getItem('usuarioLogado'); if(s) window.liberarAcesso(JSON.parse(s)); 
+});
 
 window.visualizarDocumentos = id => getDB().collection("requerimentos_exumacao").doc(id).get().then(doc => {
     if(doc.exists) {

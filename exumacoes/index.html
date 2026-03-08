@@ -69,7 +69,7 @@
         /* CSS DO CALENDÁRIO TOPO */
         .topo-content { display: flex; flex-direction: column; justify-content: center; }
         .topo-content label { font-size: 8px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; margin: 0; line-height: 1; }
-        .topo-content input { border: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text-dark); padding: 0; outline: none; cursor: pointer; height: 16px; }
+        .topo-content input, .topo-content select { border: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text-dark); padding: 0; outline: none; cursor: pointer; height: 16px; }
 
         @media (max-width: 768px) { .modal-footer-custom { padding-bottom: 20px; } .modal-footer-custom button { max-width: 48%; } }
     </style>
@@ -80,10 +80,10 @@
         <div class="bloqueio-box">
             <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo">
             <h3>Controle de Acesso</h3>
-            <p>Identifique-se para continuar</p>
-            <input type="text" id="login-usuario" placeholder="Usuário" style="margin-bottom: 10px;">
-            <input type="password" id="login-senha" placeholder="Senha" onkeypress="checarLoginEnter(event)">
-            <button onclick="fazerLogin()" class="btn-novo" style="width:100%; justify-content: center; margin-top: 15px;">🔓 Entrar</button>
+            <p style="color:#64748b; font-size:12px; margin-bottom: 20px;">Identifique-se para continuar</p>
+            <input type="text" id="login-usuario" class="admin-input-modern" placeholder="E-mail" style="margin-bottom: 12px;">
+            <input type="password" id="login-senha" class="admin-input-modern" placeholder="Senha" onkeypress="checarLoginEnter(event)">
+            <button onclick="fazerLogin()" class="btn-novo" style="width:100%; justify-content: center; margin-top: 20px;">🔓 Entrar</button>
             <p id="msg-erro-login" style="color: red; display: none; margin-top: 10px; font-weight:bold;">Dados incorretos!</p>
         </div>
     </div>
@@ -98,6 +98,20 @@
         
         <div class="info-area">
             <div class="controles-topo">
+                <div class="topo-box">
+                    <span class="topo-icon" style="margin-right: 5px; color:#94a3b8;">📌</span>
+                    <div class="topo-content">
+                        <label>Status</label>
+                        <select id="filtro-status" style="border:none; background:transparent; font-size:12px; font-weight:600; color:var(--text-dark); outline:none; padding:0; cursor:pointer;" onchange="window.filtrarPorStatus()">
+                            <option value="">Todos</option>
+                            <option value="chk_doc_ausentes">Doc. Ausentes</option>
+                            <option value="chk_deferido">Deferido</option>
+                            <option value="chk_procedido">Procedido</option>
+                            <option value="chk_aguardando">Aguardando</option>
+                            <option value="chk_arquivado">Arquivado</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="topo-box">
                     <span class="topo-icon" style="margin-right: 5px;">📅</span>
                     <div class="topo-content">
@@ -634,6 +648,8 @@
                         <button onclick="carregarEstatisticas('15')" class="btn-imprimir">15 Dias</button>
                         <button onclick="carregarEstatisticas('30')" class="btn-imprimir">30 Dias</button>
                         <button onclick="carregarEstatisticas('mes')" class="btn-imprimir">Este Mês</button>
+                        <button onclick="carregarEstatisticas('ano')" class="btn-imprimir">Este Ano</button>
+                        <button onclick="carregarEstatisticas('tudo')" class="btn-imprimir">Tudo</button>
                         
                         <div style="width: 1px; height: 25px; background: #ccc; margin: 0 5px;"></div>
                         
@@ -654,6 +670,13 @@
                         <div class="kpi-card">
                             <h4 class="kpi-title">Total de Requerimentos</h4>
                             <p id="kpi-total" class="kpi-value">0</p>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid" style="margin-top: 20px;">
+                        <div class="card-chart large" style="flex: 1 1 100%;">
+                            <h5 style="margin-top:0; margin-bottom:15px; color:#555; font-size:14px;">Evolução de Atendimentos (Período)</h5>
+                            <div class="chart-wrapper"><canvas id="grafico-evolucao"></canvas></div>
                         </div>
                     </div>
 
@@ -694,6 +717,7 @@
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
