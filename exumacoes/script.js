@@ -15,7 +15,6 @@ const safeDisplay = (id, d) => { if(_el(id)) _el(id).style.display = d; };
 const formatarDataInversa = (dStr) => dStr ? dStr.split('-').reverse().join('/') : "";
 const pegarDataISO = () => new Date().toISOString().split('T')[0];
 
-// Normalização BLINDADA contra acentos e campos vazios
 const normalizeStr = (str) => {
     if (str == null) return "";
     return String(str).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -134,13 +133,19 @@ window.fazerLogin = () => {
     });
 }
 window.checarLoginEnter = e => { if(e.key==='Enter') window.fazerLogin(); };
+
 window.liberarAcesso = (usr) => {
-    usuarioLogado = usr || usuarioLogado; sessionStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
+    usuarioLogado = usr || usuarioLogado; 
+    sessionStorage.setItem('usuarioLogado', JSON.stringify(usuarioLogado));
     safeDisplay('tela-bloqueio', 'none');
     _el('user-display').innerHTML = `<div class="user-info" style="margin-right: 15px; text-align: left;"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(usuarioLogado.nome)}&background=random&color=fff&bold=true" class="user-avatar" style="width: 36px; height: 36px; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><div style="line-height: 1.2;"><div style="font-weight: 800; color: #3699ff; font-size: 13px; text-transform: uppercase;">${usuarioLogado.nome}</div><div style="font-size: 10px; color: #888;">${usuarioLogado.email || 'Atendente'}</div></div></div>`;
+    
     if(!_val('filtro-data') && !_val('filtro-status')) _setVal('filtro-data', pegarDataISO());
-    carregarTabela();
+    
+    if (_val('filtro-status')) window.filtrarPorStatus(); 
+    else window.carregarTabela();
 }
+
 window.fazerLogout = () => { 
     if (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) {
         firebase.auth().signOut().then(() => {
@@ -391,16 +396,30 @@ window.filtrarPorStatus = () => {
                 if (d[fs] === true) lista.push(d);
             }); 
             renderizarTabela(lista);
-        });
+        }, err => console.error("Erro no filtro de status:", err));
 }
 
 // --- TABELA PRINCIPAL E BUSCA ---
+const handleSnapshotError = (err) => {
+    console.error("Erro snapshot tabela:", err);
+    if(err.code === 'permission-denied') {
+        setTimeout(() => { 
+            if(typeof firebase !== 'undefined' && firebase.auth().currentUser) {
+                if (_val('filtro-status')) window.filtrarPorStatus(); else window.carregarTabela();
+            }
+        }, 1500);
+    }
+};
+
 window.carregarTabela = () => {
     if (unsubscribe) unsubscribe(); 
     const fd = _val('filtro-data');
     let q = getDB().collection("requerimentos_exumacao").orderBy("data_registro", "desc");
     if (fd) q = q.where("data_registro", ">=", fd).where("data_registro", "<=", fd + "T23:59:59.999Z"); else q = q.limit(50);
-    unsubscribe = q.onSnapshot(snap => renderizarTabela(snap.docs.map(doc => ({...doc.data(), id: doc.id}))));
+    unsubscribe = q.onSnapshot(
+        snap => renderizarTabela(snap.docs.map(doc => ({...doc.data(), id: doc.id}))), 
+        handleSnapshotError
+    );
 }
 
 window.realizarBusca = () => {
@@ -435,7 +454,7 @@ window.realizarBusca = () => {
             }
         }); 
         renderizarTabela(lista);
-    });
+    }, handleSnapshotError);
 }
 
 function renderizarTabela(lista) {
@@ -457,6 +476,8 @@ function renderizarTabela(lista) {
         else if (i.chk_aguardando) { rowBorder = "border-left: 4px solid #f39c12;"; statusHtml += `<span style="background:#fcf3cf; color:#f39c12; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Aguardando</span>`; }
         else if (i.chk_procedido) { rowBorder = "border-left: 4px solid #3498db;"; statusHtml += `<span style="background:#e1f0ff; color:#3498db; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Procedido</span>`; }
         else if (i.chk_deferido) { rowBorder = "border-left: 4px solid #2ecc71;"; statusHtml += `<span style="background:#e8f8f5; color:#2ecc71; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Deferido</span>`; }
+        else if (i.chk_andamento) { rowBorder = "border-left: 4px solid #8e44ad;"; statusHtml += `<span style="background:#f4ecf8; color:#8e44ad; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Em Andamento</span>`; }
+        else if (i.chk_criado) { rowBorder = "border-left: 4px solid #16a085;"; statusHtml += `<span style="background:#d1f2eb; color:#16a085; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-right:4px;">Processo Criado</span>`; }
 
         tb.innerHTML += `<tr onclick="window.visualizarDocumentos('${i.id}')" style="${rowBorder}">
             <td style="vertical-align:middle;"><b>${i.resp_nome?.toUpperCase()||'-'}</b><div style="margin-top:4px; margin-bottom:4px;">${statusHtml}</div><span style="font-size:11px; color:#555;">📞 ${tl||'-'}</span></td>
@@ -485,14 +506,24 @@ window.abrirModal = () => {
     _el('form-atendimento').reset(); _setVal('docId',''); _setVal('protocolo','');
     const bx = _el('box-telefones'); if(bx) { const inps = bx.querySelectorAll('input'); for(let i=1; i<inps.length; i++) bx.removeChild(inps[i]); window.telCount = 1; }
     window.toggleCemiterioOutro(); 
+    
+    ['chk_criado', 'chk_andamento', 'chk_doc_ausentes', 'chk_deferido', 'chk_procedido', 'chk_aguardando', 'chk_arquivado'].forEach(id => {
+        if(_el(id)) _el(id).checked = false;
+    });
+    
     if(_el('div_doc_ausentes')) _el('div_doc_ausentes').style.display = 'none';
     if(usuarioLogado) _setVal('atendente_sistema', usuarioLogado.nome); 
+    
+    if(_el('chk_criado')) _el('chk_criado').checked = true;
+    
     safeDisplay('modal', 'block');
 }
 window.fecharModal = () => safeDisplay('modal', 'none');
 window.fecharModalVisualizar = () => safeDisplay('modal-visualizar', 'none');
 window.editar = id => getDB().collection("requerimentos_exumacao").doc(id).get().then(doc => {
     if(doc.exists) {
+        _el('form-atendimento').reset();
+        
         const d = doc.data(); const bx = _el('box-telefones');
         if(bx) { const inps = bx.querySelectorAll('input'); for(let i=1; i<inps.length; i++) bx.removeChild(inps[i]); window.telCount = 1; }
         let idx = 2; while(d['telefone'+idx]) { window.addTelefone(d['telefone'+idx]); idx++; }
@@ -527,7 +558,11 @@ if(form) form.onsubmit = e => {
             }
         }
     });
-    if(!id) { d.data_registro = new Date().toISOString(); d.protocolo = window.gerarProtocolo(); }
+    if(!id) { 
+        d.data_registro = new Date().toISOString(); 
+        d.protocolo = window.gerarProtocolo(); 
+        if (typeof d.chk_criado === 'undefined') d.chk_criado = true;
+    }
     getDB().collection("auditoria").add({ data_log: new Date().toISOString(), usuario: usuarioLogado?.nome||'Anon', acao: id?"EDIÇÃO":"CRIAÇÃO", detalhe: `Protocolo: ${d.protocolo} | Falecido: ${d.nome_falecido}`, sistema: "Exumacao" });
     if(id) getDB().collection("requerimentos_exumacao").doc(id).update(d).then(() => window.fecharModal()); else getDB().collection("requerimentos_exumacao").add(d).then(() => window.fecharModal());
 }
@@ -572,9 +607,27 @@ if(formLib) formLib.onsubmit = e => { e.preventDefault(); const id=_val('docIdLi
 
 // --- EVENTOS E IMPRESSÕES ---
 window.onclick = e => { if(e.target===_el('modal-visualizar')) window.fecharModalVisualizar(); if(e.target===_el('modal-admin')) window.fecharModalAdmin(); if(e.target===_el('modal-unir')) window.fecharModalUnir(); }
+
 document.addEventListener('DOMContentLoaded', () => { 
     if(_el('filtro-data')) _el('filtro-data').addEventListener('change', () => { _setVal('filtro-status', ''); window.carregarTabela(); }); 
-    const s=sessionStorage.getItem('usuarioLogado'); if(s) window.liberarAcesso(JSON.parse(s)); 
+    const s = sessionStorage.getItem('usuarioLogado'); 
+    if(s) {
+        const usr = JSON.parse(s);
+        usuarioLogado = usr;
+        safeDisplay('tela-bloqueio', 'none');
+        _el('user-display').innerHTML = `<div class="user-info" style="margin-right: 15px; text-align: left;"><img src="https://ui-avatars.com/api/?name=${encodeURIComponent(usr.nome)}&background=random&color=fff&bold=true" class="user-avatar" style="width: 36px; height: 36px; border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"><div style="line-height: 1.2;"><div style="font-weight: 800; color: #3699ff; font-size: 13px; text-transform: uppercase;">${usr.nome}</div><div style="font-size: 10px; color: #888;">${usr.email || 'Atendente'}</div></div></div>`;
+        if(!_val('filtro-data') && !_val('filtro-status')) _setVal('filtro-data', pegarDataISO());
+        
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+            firebase.auth().onAuthStateChanged(user => {
+                if (user || usr.login === 'admin') {
+                    if (_val('filtro-status')) window.filtrarPorStatus(); else window.carregarTabela();
+                }
+            });
+        } else {
+            if (_val('filtro-status')) window.filtrarPorStatus(); else window.carregarTabela();
+        }
+    } 
 });
 
 window.visualizarDocumentos = id => getDB().collection("requerimentos_exumacao").doc(id).get().then(doc => {
@@ -589,6 +642,8 @@ window.visualizarDocumentos = id => getDB().collection("requerimentos_exumacao")
         if (d.chk_aguardando) statusHtmlView += `<span style="background:#fcf3cf; color:#f39c12; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Aguardando</span>`;
         if (d.chk_procedido) statusHtmlView += `<span style="background:#e1f0ff; color:#3498db; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Procedido</span>`;
         if (d.chk_deferido) statusHtmlView += `<span style="background:#e8f8f5; color:#2ecc71; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Deferido</span>`;
+        if (d.chk_andamento) statusHtmlView += `<span style="background:#f4ecf8; color:#8e44ad; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Em Andamento</span>`;
+        if (d.chk_criado) statusHtmlView += `<span style="background:#d1f2eb; color:#16a085; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-right:4px;">Processo Criado</span>`;
 
         if(_el('resumo-dados')) _el('resumo-dados').innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;"><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Protocolo</span><br><strong style="color:var(--primary-color);font-size:14px;">${d.protocolo||'N/A'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Requerente</span><br><strong style="font-size:14px;">${d.resp_nome?.toUpperCase()||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Falecido(a)</span><br><strong style="font-size:14px;">${d.nome_falecido?.toUpperCase()||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Cemitério / Serviço</span><br><strong>${cemD?.toUpperCase()||'-'} (${d.servico_requerido?.toUpperCase()||'-'})</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Localização Sepultura</span><br><strong>Nº ${d.sepul||'-'} / QD ${d.qd||'-'}</strong></div><div><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Administrativo</span><br><strong style="color:var(--danger);">Proc: ${d.processo||'-'} / GRM: ${d.grm||'-'}</strong></div><div style="grid-column:span 3;text-align:center;margin-top:5px;"><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Status de Assinatura</span><br><strong>${d.assinatura_responsavel?'✅ Família Assinou':'⏳ Aguardando Família'} | ${d.assinatura_atendente?'✅ Equipe Assinou':'⏳ Aguardando Equipe'}</strong></div><div style="grid-column:span 3; margin-top:5px; text-align:center;"><span style="color:#888;font-size:10px;text-transform:uppercase;font-weight:bold;">Andamento do Processo</span><br>${statusHtmlView || '<strong>-</strong>'}</div></div>`;
         safeDisplay('modal-visualizar', 'block');
@@ -600,7 +655,13 @@ const upper = s => s ? s.toUpperCase() : '-';
 
 window.imprimirRequerimento = () => {
     if (!dadosAtendimentoAtual) return; const d = dadosAtendimentoAtual;
-    let tSep = d.tipo_sepultura; if(tSep==='Nicho perpétuo' || tSep==='Sep perpétua') tSep += ' nº ____ L nº ____ Fls nº ____';
+    let tSep = d.tipo_sepultura || ''; 
+    if(tSep==='Nicho perpétuo' || tSep==='Sep perpétua') {
+        let sepNum = d.sepul || '____';
+        let livNum = d.destino_livro || '____';
+        let flsNum = d.destino_fls || '____';
+        tSep += ` nº ${sepNum} L nº ${livNum} Fls nº ${flsNum}`;
+    }
     const dr = d.data_registro ? new Date(d.data_registro) : new Date(), dtxt = `Niterói, ${dr.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dr.getMonth()]} de ${dr.getFullYear()}`;
     const blR = assinaturaResponsavelImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaResponsavelImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
     const blA = assinaturaAtendenteImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaAtendenteImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
@@ -626,7 +687,8 @@ window.imprimirRequerimento = () => {
 }
 
 window.imprimirLiberacao = () => {
-    if (!dadosAtendimentoAtual) return; const d = dadosAtendimentoAtual;
+    if (!dadosAtendimentoAtual) return alert("Nenhum atendimento selecionado.");
+    const d = dadosAtendimentoAtual;
     const dr = d.data_registro ? new Date(d.data_registro) : new Date(), dtxt = `Niterói, ${dr.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dr.getMonth()]} de ${dr.getFullYear()}`;
     let endC = upper(`${d.endereco}, Nº ${d.numero||'S/N'}`); if (d.complemento) endC += ` - ${upper(d.complemento)}`;
     let tL = d.telefone||''; let i=2; while(d['telefone'+i]) { tL += ' / ' + d['telefone'+i]; i++; }
@@ -649,6 +711,81 @@ window.imprimirLiberacao = () => {
         <div style="margin-top:15px; text-align:right; font-size:14px;"><b>${dtxt}</b></div>
         <div style="display:flex; justify-content:space-around; margin-top:40px; text-align:center;"><div>${blA}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>${upper(d.atendente_sistema||'ATENDENTE')}</b><br><span style="font-size:11px; color:#555;">Coordenação dos Cemitérios de Niterói</span></div></div><div>${blR}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>RESPONSÁVEL</b><br></div></div></div>
         <div style="text-align:center; font-size:10px; color:#666; margin-top:30px;">Rua General Castrioto, 407 - Barreto - Niterói - 24110-256 - Tel.: 3513-6157</div>
+    </body><script>window.onload=()=>setTimeout(()=>window.print(),800)</script></html>`;
+    const w = window.open('','_blank'); w.document.write(html); w.document.close();
+}
+
+window.imprimirLiberacaoLapide = () => {
+    if (!dadosAtendimentoAtual) return alert("Nenhum atendimento selecionado.");
+    const d = dadosAtendimentoAtual;
+    const dr = d.data_registro ? new Date(d.data_registro) : new Date(), dtxt = `Niterói, ${dr.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dr.getMonth()]} de ${dr.getFullYear()}.`;
+    let cemO = d.cemiterio==='OUTRO'?upper(d.cemiterio_outro):upper(d.cemiterio);
+
+    const html = `<html><head><title>Liberação de Lápide</title>
+    <style>
+        @page{size:A4 portrait;margin:15mm}
+        body{font-family:Arial,sans-serif;font-size:13px;line-height:1.5;color:#000;position:relative;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+        .watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;opacity:.1;z-index:-1;pointer-events:none}
+        .header{display:flex;align-items:center;margin-bottom:20px;}
+        .header img{height:50px;margin-right:20px;}
+        .header-text{font-size:12px; text-transform:uppercase;}
+        .title{text-align:center;font-weight:bold;margin:20px 0;font-size:14px;}
+        .date-right{text-align:right;margin-bottom:30px;font-size:13px;}
+        .info-block{margin-bottom:20px; line-height: 1.8;}
+        .attention-block{text-align:center;margin:30px 0;font-size:12px;font-weight:bold;}
+        .attention-block p{margin:8px 0; text-transform:uppercase;}
+        .declaration{text-align:center;font-weight:bold;text-decoration:underline;margin:40px 0;font-size:12px;text-transform:uppercase;}
+        .signatures{display:flex;justify-content:space-between;margin-top:60px;}
+        .footer-address{text-align:center;font-size:10px;margin-top:50px;color:#333;}
+    </style></head><body>
+        <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Bras%C3%A3o_de_Niter%C3%B3i%2C_RJ.svg" class="watermark">
+        <div class="header">
+            <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo">
+            <div class="header-text">SECRETARIA DE MOBILIDADE E INFRAESTRUTURA - SEMOBI<br>SUBSECRETARIA DE INFRAESTRUTURA - SSINFRA</div>
+        </div>
+        
+        <div class="title">COORDENADORIA MUNICIPAL DE SERVIÇOS FUNERÁRIOS</div>
+        <div class="date-right">${dtxt}</div>
+        
+        <div class="info-block">
+            Processo: <b>${d.processo||'-'}</b><br>
+            GRM: <b>${d.grm||'-'}</b><br>
+            Cemitério Municipal: <b>${cemO}</b>
+        </div>
+        
+        <div class="info-block">
+            O (a) Sr. (ª) requerente: <b>${upper(d.resp_nome)}</b><br><br>
+            Pagou a quantia de R$: <b>${upper(d.valor_pago)}</b><br><br>
+            Referente a: ${upper(d.referente_a?d.referente_a.replace(/\n/g,'<br>'):'')}
+        </div>
+
+        <div class="attention-block">
+            <p style="text-decoration:underline; font-size:14px; margin-bottom:15px;">ATENÇÃO!!!</p>
+            <p style="text-decoration:underline;">A COLOCAÇÃO DE LÁPIDE SERÁ DE SEGUNDA A SEXTA, NO HORÁRIO ENTRE 8H AS 10H, EXCETO FERIADOS.</p>
+            <p>A LÁPIDE DEVERÁ CONTER EXATAMENTE AS MESMAS DIMENSÕES DO NICHO / SEPULTURA, CASO CONTRÁRIO NÃO SERÁ ACEITA A COLOCAÇÃO.</p>
+            <p>OS FUNCIONÁRIOS DO CEMITÉRIO SÃO PROIBIDOS DE REALIZAR A MEDIÇÃO DO NICHO / SEPULTURA.</p>
+            <p>A MEDIDA DEVERÁ FEITA AONDE O REQUERENTE SOLICITOU A CONFECÇÃO DA LÁPIDE, QUE DEVERÁ SER FEITA EM MÁRMORE OU GRANITO.</p>
+            <p>AS LÁPIDES ORIUNDAS DE SEPULTURAS DEVERÃO CONTER AS MESMAS DIMENSÕES DOS NICHOS NOVOS A SEREM ADQUIRIDOS OU JÁ ADQUIRIDOS.</p>
+        </div>
+
+        <div class="declaration">
+            DECLARO ESTAR CIENTE DE QUE, A PARTIR DA DATA DE HOJE, TENHO O PRAZO DE 90 DIAS PARA A COLOCAÇÃO DA PLACA DE IDENTIFICAÇÃO EM MÁRMORE OU GRANITO.
+        </div>
+
+        <div class="signatures">
+            <div>
+                Atenciosamente,<br><br><br>
+                ${upper(d.atendente_sistema||'ATENDENTE')}
+            </div>
+            <div style="text-align:right; align-self:flex-end;">
+                Ciente: __________________________________________________
+            </div>
+        </div>
+
+        <div class="footer-address">
+            Coordenadoria Municipal de Serviços Funerários<br>
+            Rua General Castrioto, 407 - Barreto - Niterói - 24110-256 - Tel.: 3513-6157
+        </div>
     </body><script>window.onload=()=>setTimeout(()=>window.print(),800)</script></html>`;
     const w = window.open('','_blank'); w.document.write(html); w.document.close();
 }
@@ -688,7 +825,7 @@ window.imprimirDeclaracao = () => {
         case "declaracao_residencia": tit="De residência"; txt=`Declaro para devidos fins que tenho domicílio a ${b(endC)}, bairro ${b(upper(d.bairro))}, município ${b(upper(d.municipio))}, CEP ${b(d.cep||'___________')}.`; break;
         case "cancelamento_processo": tit="Termo de cancelamento"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)} sepultado na sepultura ${b(tO)} n° ${b(sO)} no cemitério ${b(cO)}, solicitar o cancelamento do meu processo nº ${b(proc)}.<br><br>Sugiro o arquivamento.`; break;
         case "termo_entrada_ossos_mumificados": tit="Termo de responsabilidade – Entrada de ossos mumificados"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)}, sepultado em ${b(tO)} nº ${b(sO)} no cemitério ${b(cO)}, me responsabilizar perante a Prefeitura Municipal de Niterói, que caso seja constatado que a ossada encontra-se em estado de mumificação, a mesma não poderá, sob nenhuma hipótese, ser retirada do cemitério de origem, ficando impedida a entrada de ossos nos cemitérios Municipais de Niterói. Comprometo-me a respeitar as orientações e determinações técnicas dos órgãos responsáveis e eximo a Prefeitura Municipal de Niterói de qualquer responsabilidade quanto à impossibilidade de remoção ou traslado da ossada nessas condições.<br><br>Sendo assim me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
-        case "termo_capacidade_nicho_perpetuo": tit="Termo de responsabilidade – Capacidade do nicho perpétuo"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)}, sepultado em ${b(tO)} nº ${b(sO)} no cemitério ${b(cO)}, Declaro-me responsável perante a Prefeitura Municipal de Niterói e ciente de que, caso o nicho perpétuo nº ${b(dN!=='_____'?dN:sO)} não possua capacidade física para receber a ossada, comprometo-me, por minha conta, a providenciar a aquisição de um novo nicho que atenda às exigências e normas vigentes do cemitério ou a dar outro destino adequado aos restos mortais.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
+        case "termo_capacidade_nicho_perpetuo": tit="Termo de responsabilidade – Capacidade do nicho perpétuo"; txt=`Venho por meio desta, case ${b(upper(d.parentesco))} do falecido(a) ${b(fal)}, sepultado em ${b(tO)} nº ${b(sO)} no cemitério ${b(cO)}, Declaro-me responsável perante a Prefeitura Municipal de Niterói e ciente de que, caso o nicho perpétuo nº ${b(dN!=='_____'?dN:sO)} não possua capacidade física para receber a ossada, comprometo-me, por minha conta, a providenciar a aquisição de um novo nicho que atenda às exigências e normas vigentes do cemitério ou a dar outro destino adequado aos restos mortais.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
         case "termo_lapide_perpetuo": tit="Termo de responsabilidade para colocação de lápide em perpétuos"; txt=`tomo ciência que:<br><br>• Não será aceita placas de identificação que não houver as mesmas dimensões do nicho ou sepultura;<br>• Os funcionários do Cemitério Municipal do Maruí são proibidos de fazer medição de pedra mármore / granito para nicho ou sepultura;<br>• A medição da placa será feita pelo funcionário da marmoraria contratada pela família;<br>• Poderá ser aproveitada lápides oriundas de sepulturas ou de entradas de restos mortais desde que esteja dentro dos padrões mencionados acima;<br>• O funcionário do Cemitério colocará a placa sem custo adicional;<br>• Não poderá colocar placas de azulejos, plástico ou inox;<br>• Só poderá ser placa de mármore/granito.<br>• O recibo entregue após o pagamento tem validade de 90 (NOVENTA) dias.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
         case "termo_reforma_perpetuo": tit="Termo de responsabilidade para reformas ou serviços em perpétuos"; txt=`tomo ciência que:<br><br>• O Cemitério NÃO guardará as ossadas que estão na sepultura durante o serviço / reforma;<br>• Os funcionários do Cemitério NÃO poderão fazer qualquer tipo de mão de obra na sepultura perpétua;<br>• NÃO fazemos indicações de profissionais, a família deverá trazer o profissional de sua escolha e confiança.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
     }
@@ -704,7 +841,7 @@ window.imprimirDeclaracao = () => {
         <div class="header"><img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo Prefeitura"><div class="header-title">SECRETARIA DE MOBILIDADE E INFRAESTRUTURA - SEMOBI</div><div class="header-title">SUBSECRETARIA DE INFRAESTRUTURA - SSINFRA</div><div class="doc-title">DECLARAÇÃO</div><div style="font-weight:bold;font-size:17px;margin-top:10px;">${tit}</div></div>
         <div class="content">${txtI} ${txt}</div>
         <div class="footer"><div>Niterói, ${dtxt}</div><div style="margin-top:50px;display:flex;flex-direction:column;align-items:center;"><div style="width:350px;text-align:center;">${blR}<div style="border-top:1px solid #000;padding-top:5px;font-weight:bold;">Assinatura conforme documento apresentado</div></div><div style="margin-top:15px;font-weight:bold;font-size:14px;">*ANEXAR XEROX DO RG</div></div></div>
-        <div class=\"legal\">Art. 299 do Código Penal - Falsidade ideológica: Omitir, em documento público ou particular, declaração que dele devia constar, ou nele inserir ou fazer inserir declaração falsa ou diversa da que devia ser escrita, com o fim de prejudicar direito, criar obrigação ou alterar a verdade sobre fatos juridicamente relevante, é crime.</div>
+        <div class="legal">Art. 299 do Código Penal - Falsidade ideológica: Omitir, em documento público ou particular, declaração que dele devia constar, ou nele inserir ou fazer inserir declaração falsa ou diversa da que devia ser escrita, com o fim de prejudicar direito, criar obrigação ou alterar a verdade sobre fatos juridicamente relevante, é crime.</div>
     </body><script>window.onload=()=>setTimeout(()=>window.print(),800)</script></html>`;
     const w = window.open('','_blank'); w.document.write(html); w.document.close();
 }
