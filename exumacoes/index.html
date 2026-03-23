@@ -22,12 +22,14 @@
         .btn-sign-fam { background-color: #663399; }
         .btn-sign-func { background-color: #8e44ad; }
 
-        /* CSS DO PAINEL ADMIN - ABAS CORRIGIDAS */
+        /* CSS DO PAINEL ADMIN - ABAS MODERNAS CORRIGIDO */
         .btn-admin { background-color: #34495e; }
-        .tab-header { display: flex; border-bottom: 2px solid #ebedf3; background-color: #fcfcfc; width: 100%; box-sizing: border-box; flex-wrap: wrap; }
-        .tab-btn { flex: 1; min-width: 120px; padding: 15px 5px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #5c677d; border-bottom: 3px solid transparent; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; white-space: nowrap; font-size: 13px; margin-bottom: -2px; outline: none; }
+        .tab-header { display: flex; border-bottom: 2px solid #ebedf3; background-color: #fcfcfc; overflow-x: auto; margin-bottom: 0; }
+        .tab-header::-webkit-scrollbar { height: 4px; }
+        .tab-header::-webkit-scrollbar-thumb { background: #dce1e7; border-radius: 4px; }
+        .tab-btn { padding: 16px 20px; border: none; background: transparent; cursor: pointer; font-weight: 600; color: #5c677d; border-bottom: 3px solid transparent; display: flex; align-items: center; gap: 8px; transition: 0.2s; white-space: nowrap; font-size: 13px; margin-bottom: -2px; flex: 0 0 auto; }
         .tab-btn:hover { background-color: #f0f4f8; color: #0056b3; }
-        .tab-btn.active { background-color: #ffffff !important; color: #3699ff !important; border-bottom: 3px solid #3699ff !important; }
+        .tab-btn.active { background-color: #0056b3 !important; color: white !important; border-bottom: 3px solid #3699ff !important; }
         .tab-pane { display: none; padding: 25px 20px; }
         .tab-pane.active { display: block; }
         
@@ -57,6 +59,14 @@
         .admin-btn-modern:hover { background: #2a88e5; }
         .admin-label { font-size: 10px; font-weight: bold; margin-bottom: 4px; display: block; text-transform: uppercase; }
 
+        /* NOVOS ESTILOS PARA A TABELA PRINCIPAL (BADGES) */
+        .badge { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-block; margin-right: 4px; margin-bottom: 4px; letter-spacing: 0.3px; }
+        .badge-blue { background: #e1f0ff; color: #0069d9; border: 1px solid #cce5ff; }
+        .text-icon { display: flex; align-items: center; gap: 5px; }
+        .text-icon-sm { font-size: 11px; color: #888; display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+        .cemiterio-tag { color: #8e44ad; font-weight: 700; background: #f3e5f5; padding: 3px 8px; border-radius: 4px; font-size: 12px; display: inline-block;}
+        .td-destaque { color: #333; font-weight: 600; }
+
         /* DASHBOARD MODERNIZATION */
         .dashboard-grid { display: flex; flex-wrap: wrap; gap: 20px; }
         .card-chart { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #edf2f9; flex: 1 1 300px; display: flex; flex-direction: column; }
@@ -80,10 +90,10 @@
         <div class="bloqueio-box">
             <img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo">
             <h3>Controle de Acesso</h3>
-            <p style="color:#64748b; font-size:12px; margin-bottom: 20px;">Identifique-se para continuar</p>
-            <input type="text" id="login-usuario" class="admin-input-modern" placeholder="E-mail ou Usuário" style="margin-bottom: 12px;">
-            <input type="password" id="login-senha" class="admin-input-modern" placeholder="Senha" onkeypress="checarLoginEnter(event)">
-            <button onclick="fazerLogin()" class="btn-novo" style="width:100%; justify-content: center; margin-top: 20px;">🔓 Entrar</button>
+            <p>Identifique-se para continuar</p>
+            <input type="text" id="login-usuario" placeholder="E-mail ou Usuário" style="margin-bottom: 10px;">
+            <input type="password" id="login-senha" placeholder="Senha" onkeypress="checarLoginEnter(event)">
+            <button onclick="fazerLogin()" class="btn-novo" style="width:100%; justify-content: center; margin-top: 15px;">🔓 Entrar</button>
             <p id="msg-erro-login" style="color: red; display: none; margin-top: 10px; font-weight:bold;">Dados incorretos!</p>
         </div>
     </div>
