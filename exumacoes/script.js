@@ -125,8 +125,14 @@ window.fazerLogin = () => {
     
     firebase.auth().signInWithEmailAndPassword(u, p).then(() => {
         getDB().collection("equipe").where("email", "==", u).get().then(snap => {
-            if (!snap.empty) window.liberarAcesso(snap.docs[0].data()); 
-            else window.liberarAcesso({nome: u.split('@')[0], login: u, email: u});
+            if (!snap.empty) {
+                window.liberarAcesso(snap.docs[0].data()); 
+            } else {
+                getDB().collection("equipe").where("login", "==", u.split('@')[0]).get().then(snap2 => {
+                    if (!snap2.empty) window.liberarAcesso(snap2.docs[0].data());
+                    else window.liberarAcesso({nome: u.split('@')[0], login: u, email: u});
+                });
+            }
         });
     }).catch(err => {
         safeDisplay('msg-erro-login', 'block');
@@ -161,7 +167,12 @@ window.abrirAba = id => {
     document.querySelectorAll('.tab-pane').forEach(e => e.classList.remove('active')); _el(id).classList.add('active');
     document.querySelectorAll('.tab-header .tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelector(`.tab-header .tab-btn[onclick="abrirAba('${id}')"]`)?.classList.add('active');
-    if(id==='tab-equipe') window.listarEquipe(); if(id==='tab-logs') window.carregarLogs(); if(id==='tab-stats') window.carregarEstatisticas('hoje'); if(id==='tab-contribuintes') setTimeout(() => _el('busca-contribuinte-admin').focus(), 100);
+    if(id==='tab-equipe') window.listarEquipe(); 
+    if(id==='tab-logs') window.carregarLogs(); 
+    if(id==='tab-stats') {
+        setTimeout(() => window.carregarEstatisticas('mes'), 100); 
+    }
+    if(id==='tab-contribuintes') setTimeout(() => _el('busca-contribuinte-admin').focus(), 100);
 }
 
 // --- ADMIN: CONTRIBUINTES ---
@@ -324,12 +335,23 @@ window.carregarEstatisticas = (modo) => {
     if(de) query = query.where("data_registro", "<=", de);
 
     query.onSnapshot(snap => {
-        let servicos = {}, cemiterios = {}, evolucao = {}, total = 0;
+        let servicos = {}, cemiterios = {}, evolucao = {}, statusCount = {}, atendentes = {}, total = 0;
         snap.forEach(doc => {
             const d = doc.data(); total++;
             if(d.servico_requerido) d.servico_requerido.split(',').forEach(s => { let k = s.trim().toUpperCase(); if(k) servicos[k] = (servicos[k]||0)+1; });
             let c = d.cemiterio?.toUpperCase() || "N/A"; if(c==='OUTRO') c = d.cemiterio_outro?.toUpperCase() || c; cemiterios[c] = (cemiterios[c]||0)+1;
             
+            let at = d.atendente_sistema ? d.atendente_sistema.toUpperCase() : "NÃO INFORMADO";
+            atendentes[at] = (atendentes[at]||0)+1;
+
+            if (d.chk_criado) statusCount["Criado"] = (statusCount["Criado"]||0)+1;
+            if (d.chk_andamento) statusCount["Em Andamento"] = (statusCount["Em Andamento"]||0)+1;
+            if (d.chk_doc_ausentes) statusCount["Doc. Ausentes"] = (statusCount["Doc. Ausentes"]||0)+1;
+            if (d.chk_deferido) statusCount["Deferido"] = (statusCount["Deferido"]||0)+1;
+            if (d.chk_procedido) statusCount["Procedido"] = (statusCount["Procedido"]||0)+1;
+            if (d.chk_aguardando) statusCount["Aguardando"] = (statusCount["Aguardando"]||0)+1;
+            if (d.chk_arquivado) statusCount["Arquivado"] = (statusCount["Arquivado"]||0)+1;
+
             if(d.data_registro) {
                 let dateStr = d.data_registro.split('T')[0];
                 if (diffDays > 1000) dateStr = dateStr.substring(0, 4); 
@@ -368,6 +390,8 @@ window.carregarEstatisticas = (modo) => {
         };
 
         buildTimelineChart('grafico-evolucao', 'line', evolucao, 'rgba(37, 99, 235, 0.85)');
+        buildChart('grafico-status', 'doughnut', statusCount, ['#16a085', '#8e44ad', '#e74c3c', '#2ecc71', '#3498db', '#f39c12', '#95a5a6']);
+        buildChart('grafico-atendentes', 'bar', atendentes, '#e67e22');
         dadosEstatisticasExportacao = buildChart('grafico-servicos', 'bar', servicos, 'rgba(54, 153, 255, 0.85)').map(([c,q]) => ({"Serviço": c, "Quantidade": q}));
         buildChart('grafico-cemiterios', 'doughnut', cemiterios, ['#3699ff', '#27ae60', '#f39c12', '#e74c3c', '#9b59b6']);
     });
@@ -489,7 +513,7 @@ function renderizarTabela(lista) {
                 ${i.processo ? `<div style="color: #d35400;"><b>Proc:</b> <span style="font-weight:bold;">${i.processo}</span></div>` : ''}
                 <div style="color: #27ae60;"><b>GRM:</b> <span style="font-weight:bold;">${i.grm||'-'}</span></div>
             </td>
-            <td style="vertical-align:middle;">${i.data_registro?formatarDataInversa(i.data_registro.split('T')[0]):'-'}</td>
+            <td style="vertical-align:middle;">${i.data_registro?formatarDataInversa(i.data_registro.split('T')[0]):'-'}<br><span style="font-size:10px; color:#666; font-weight:bold;">👤 ${i.atendente_sistema || 'Não informado'}</span></td>
             <td style="text-align:right; vertical-align:middle;">
                 <div style="display:flex; gap:5px; justify-content:flex-end;">
                     <button class="btn-icon btn-editar-circle" title="Editar Requerimento" onclick="event.stopPropagation();window.editar('${i.id}')">✏️</button>
@@ -690,6 +714,7 @@ window.imprimirLiberacao = () => {
     if (!dadosAtendimentoAtual) return alert("Nenhum atendimento selecionado.");
     const d = dadosAtendimentoAtual;
     const dr = d.data_registro ? new Date(d.data_registro) : new Date(), dtxt = `Niterói, ${dr.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dr.getMonth()]} de ${dr.getFullYear()}`;
+    const dHj = new Date(), dtxtEmissao = `Niterói, ${dHj.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dHj.getMonth()]} de ${dHj.getFullYear()}`;
     let endC = upper(`${d.endereco}, Nº ${d.numero||'S/N'}`); if (d.complemento) endC += ` - ${upper(d.complemento)}`;
     let tL = d.telefone||''; let i=2; while(d['telefone'+i]) { tL += ' / ' + d['telefone'+i]; i++; }
     const blR = assinaturaResponsavelImg ? `<div style="text-align:center; height:45px;"><img src="${assinaturaResponsavelImg}" style="max-height:40px; max-width:80%;"></div>` : `<div style="height:45px;"></div>`;
@@ -708,8 +733,8 @@ window.imprimirLiberacao = () => {
         <div class="section"><div class="section-title">Dados do Requerente e Localização</div><div class="row"><div class="field" style="flex:2;"><span class="label">Nome do Requerente</span><span class="value">${upper(d.resp_nome)}</span></div><div class="field"><span class="label">Cemitério Municipal</span><span class="value">${d.cemiterio==='OUTRO'?upper(d.cemiterio_outro):upper(d.cemiterio)}</span></div></div><div class="row"><div class="field" style="flex:2.5;"><span class="label">Endereço</span><span class="value">${endC}</span></div><div class="field" style="flex:0.5;"><span class="label">CEP</span><span class="value">${d.cep||'-'}</span></div></div><div class="row"><div class="field"><span class="label">Bairro</span><span class="value">${upper(d.bairro)}</span></div><div class="field"><span class="label">Município</span><span class="value">${upper(d.municipio)}</span></div><div class="field"><span class="label">Telefone(s)</span><span class="value">${tL}</span></div></div></div>
         <div class="section"><div class="section-title">Referente A</div><div class="row"><div class="field"><span class="value" style="border:none;text-align:justify;line-height:1.5;text-transform:uppercase;">${d.referente_a?d.referente_a.replace(/\n/g,'<br>'):'__________________________________________________________________________'}</span></div></div></div>
         <div class="footer-note"><b>ESTOU CIENTE QUE O(A) REQUERENTE DEVERÁ COMPARECER NO DIA DA EXUMAÇÃO/ENTRADA E SAÍDA DE OSSOS__________________________________________</b><br><br><div style="text-align:center;text-decoration:underline;"><b>EXUMAÇÃO E ENTRADA/SAÍDA DE OSSOS SÃO FEITAS DE SEGUNDA A SEXTA DAS 8H ÀS 10H, EXCETO FERIADOS.</b></div>${avisoNichoHtml}</div>
-        <div style="margin-top:15px; text-align:right; font-size:14px;"><b>${dtxt}</b></div>
-        <div style="display:flex; justify-content:space-around; margin-top:40px; text-align:center;"><div>${blA}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>${upper(d.atendente_sistema||'ATENDENTE')}</b><br><span style="font-size:11px; color:#555;">Coordenação dos Cemitérios de Niterói</span></div></div><div>${blR}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>RESPONSÁVEL</b><br></div></div></div>
+        <div style="margin-top:15px; text-align:right; font-size:12px;"><b>Data do Requerimento: ${dtxt}</b><br><b>Data de Emissão (Impressão): ${dtxtEmissao}</b></div>
+        <div style="display:flex; justify-content:space-around; margin-top:40px; text-align:center;"><div>${blA}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>${upper(usuarioLogado?.nome||d.atendente_sistema||'ATENDENTE')}</b><br><span style="font-size:11px; color:#555;">Coordenação dos Cemitérios de Niterói</span></div></div><div>${blR}<div style="border-top:1px solid #000; padding-top:5px; min-width:250px;"><b>RESPONSÁVEL</b><br></div></div></div>
         <div style="text-align:center; font-size:10px; color:#666; margin-top:30px;">Rua General Castrioto, 407 - Barreto - Niterói - 24110-256 - Tel.: 3513-6157</div>
     </body><script>window.onload=()=>setTimeout(()=>window.print(),800)</script></html>`;
     const w = window.open('','_blank'); w.document.write(html); w.document.close();
@@ -718,7 +743,7 @@ window.imprimirLiberacao = () => {
 window.imprimirLiberacaoLapide = () => {
     if (!dadosAtendimentoAtual) return alert("Nenhum atendimento selecionado.");
     const d = dadosAtendimentoAtual;
-    const dr = d.data_registro ? new Date(d.data_registro) : new Date(), dtxt = `Niterói, ${dr.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dr.getMonth()]} de ${dr.getFullYear()}.`;
+    const dHj = new Date(), dtxtEmissao = `Niterói, ${dHj.getDate()} de ${["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][dHj.getMonth()]} de ${dHj.getFullYear()}.`;
     let cemO = d.cemiterio==='OUTRO'?upper(d.cemiterio_outro):upper(d.cemiterio);
 
     const html = `<html><head><title>Liberação de Lápide</title>
@@ -745,7 +770,7 @@ window.imprimirLiberacaoLapide = () => {
         </div>
         
         <div class="title">COORDENADORIA MUNICIPAL DE SERVIÇOS FUNERÁRIOS</div>
-        <div class="date-right">${dtxt}</div>
+        <div class="date-right">${dtxtEmissao}</div>
         
         <div class="info-block">
             Processo: <b>${d.processo||'-'}</b><br>
@@ -764,7 +789,7 @@ window.imprimirLiberacaoLapide = () => {
             <p style="text-decoration:underline;">A COLOCAÇÃO DE LÁPIDE SERÁ DE SEGUNDA A SEXTA, NO HORÁRIO ENTRE 8H AS 10H, EXCETO FERIADOS.</p>
             <p>A LÁPIDE DEVERÁ CONTER EXATAMENTE AS MESMAS DIMENSÕES DO NICHO / SEPULTURA, CASO CONTRÁRIO NÃO SERÁ ACEITA A COLOCAÇÃO.</p>
             <p>OS FUNCIONÁRIOS DO CEMITÉRIO SÃO PROIBIDOS DE REALIZAR A MEDIÇÃO DO NICHO / SEPULTURA.</p>
-            <p>A MEDIDA DEVERÁ FEITA AONDE O REQUERENTE SOLICITOU A CONFECÇÃO DA LÁPIDE, QUE DEVERÁ SER FEITA EM MÁRMORE OU GRANITO.</p>
+            <p>A MEDIDA DEVERÁ SER FEITA AONDE O REQUERENTE SOLICITOU A CONFECÇÃO DA LÁPIDE, QUE DEVERÁ SER FEITA EM MÁRMORE OU GRANITO.</p>
             <p>AS LÁPIDES ORIUNDAS DE SEPULTURAS DEVERÃO CONTER AS MESMAS DIMENSÕES DOS NICHOS NOVOS A SEREM ADQUIRIDOS OU JÁ ADQUIRIDOS.</p>
         </div>
 
@@ -775,7 +800,7 @@ window.imprimirLiberacaoLapide = () => {
         <div class="signatures">
             <div>
                 Atenciosamente,<br><br><br>
-                ${upper(d.atendente_sistema||'ATENDENTE')}
+                ${upper(usuarioLogado?.nome||d.atendente_sistema||'ATENDENTE')}
             </div>
             <div style="text-align:right; align-self:flex-end;">
                 Ciente: __________________________________________________
@@ -825,7 +850,7 @@ window.imprimirDeclaracao = () => {
         case "declaracao_residencia": tit="De residência"; txt=`Declaro para devidos fins que tenho domicílio a ${b(endC)}, bairro ${b(upper(d.bairro))}, município ${b(upper(d.municipio))}, CEP ${b(d.cep||'___________')}.`; break;
         case "cancelamento_processo": tit="Termo de cancelamento"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)} sepultado na sepultura ${b(tO)} n° ${b(sO)} no cemitério ${b(cO)}, solicitar o cancelamento do meu processo nº ${b(proc)}.<br><br>Sugiro o arquivamento.`; break;
         case "termo_entrada_ossos_mumificados": tit="Termo de responsabilidade – Entrada de ossos mumificados"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)}, sepultado em ${b(tO)} nº ${b(sO)} no cemitério ${b(cO)}, me responsabilizar perante a Prefeitura Municipal de Niterói, que caso seja constatado que a ossada encontra-se em estado de mumificação, a mesma não poderá, sob nenhuma hipótese, ser retirada do cemitério de origem, ficando impedida a entrada de ossos nos cemitérios Municipais de Niterói. Comprometo-me a respeitar as orientações e determinações técnicas dos órgãos responsáveis e eximo a Prefeitura Municipal de Niterói de qualquer responsabilidade quanto à impossibilidade de remoção ou traslado da ossada nessas condições.<br><br>Sendo assim me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
-        case "termo_capacidade_nicho_perpetuo": tit="Termo de responsabilidade – Capacidade do nicho perpétuo"; txt=`Venho por meio desta, case ${b(upper(d.parentesco))} do falecido(a) ${b(fal)}, sepultado em ${b(tO)} nº ${b(sO)} no cemitério ${b(cO)}, Declaro-me responsável perante a Prefeitura Municipal de Niterói e ciente de que, caso o nicho perpétuo nº ${b(dN!=='_____'?dN:sO)} não possua capacidade física para receber a ossada, comprometo-me, por minha conta, a providenciar a aquisição de um novo nicho que atenda às exigências e normas vigentes do cemitério ou a dar outro destino adequado aos restos mortais.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
+        case "termo_capacidade_nicho_perpetuo": tit="Termo de responsabilidade – Capacidade do nicho perpétuo"; txt=`Venho por meio desta, como ${b(upper(d.parentesco))} do falecido(a) ${b(fal)}, sepultado em ${b(tO)} nº ${b(sO)} no cemitério ${b(cO)}, Declaro-me responsável perante a Prefeitura Municipal de Niterói e ciente de que, caso o nicho perpétuo nº ${b(dN!=='_____'?dN:sO)} não possua capacidade física para receber a ossada, comprometo-me, por minha conta, a providenciar a aquisição de um novo nicho que atenda às exigências e normas vigentes do cemitério ou a dar outro destino adequado aos restos mortais.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
         case "termo_lapide_perpetuo": tit="Termo de responsabilidade para colocação de lápide em perpétuos"; txt=`tomo ciência que:<br><br>• Não será aceita placas de identificação que não houver as mesmas dimensões do nicho ou sepultura;<br>• Os funcionários do Cemitério Municipal do Maruí são proibidos de fazer medição de pedra mármore / granito para nicho ou sepultura;<br>• A medição da placa será feita pelo funcionário da marmoraria contratada pela família;<br>• Poderá ser aproveitada lápides oriundas de sepulturas ou de entradas de restos mortais desde que esteja dentro dos padrões mencionados acima;<br>• O funcionário do Cemitério colocará a placa sem custo adicional;<br>• Não poderá colocar placas de azulejos, plástico ou inox;<br>• Só poderá ser placa de mármore/granito.<br>• O recibo entregue após o pagamento tem validade de 90 (NOVENTA) dias.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
         case "termo_reforma_perpetuo": tit="Termo de responsabilidade para reformas ou serviços em perpétuos"; txt=`tomo ciência que:<br><br>• O Cemitério NÃO guardará as ossadas que estão na sepultura durante o serviço / reforma;<br>• Os funcionários do Cemitério NÃO poderão fazer qualquer tipo de mão de obra na sepultura perpétua;<br>• NÃO fazemos indicações de profissionais, a família deverá trazer o profissional de sua escolha e confiança.<br><br>Sendo assim, me responsabilizo por qualquer eventualidade.<br>Aguardo o deferimento do meu pedido.`; break;
     }
@@ -841,7 +866,7 @@ window.imprimirDeclaracao = () => {
         <div class="header"><img src="https://niteroi.rj.gov.br/wp-content/uploads/2025/06/pmnlogo-2.png" alt="Logo Prefeitura"><div class="header-title">SECRETARIA DE MOBILIDADE E INFRAESTRUTURA - SEMOBI</div><div class="header-title">SUBSECRETARIA DE INFRAESTRUTURA - SSINFRA</div><div class="doc-title">DECLARAÇÃO</div><div style="font-weight:bold;font-size:17px;margin-top:10px;">${tit}</div></div>
         <div class="content">${txtI} ${txt}</div>
         <div class="footer"><div>Niterói, ${dtxt}</div><div style="margin-top:50px;display:flex;flex-direction:column;align-items:center;"><div style="width:350px;text-align:center;">${blR}<div style="border-top:1px solid #000;padding-top:5px;font-weight:bold;">Assinatura conforme documento apresentado</div></div><div style="margin-top:15px;font-weight:bold;font-size:14px;">*ANEXAR XEROX DO RG</div></div></div>
-        <div class="legal">Art. 299 do Código Penal - Falsidade ideológica: Omitir, em documento público ou particular, declaração que dele devia constar, ou nele inserir ou fazer inserir declaração falsa ou diversa da que devia ser escrita, com o fim de prejudicar direito, criar obrigação ou alterar a verdade sobre fatos juridicamente relevante, é crime.</div>
+        <div class=\"legal\">Art. 299 do Código Penal - Falsidade ideológica: Omitir, em documento público ou particular, declaração que dele devia constar, ou nele inserir ou fazer inserir declaração falsa ou diversa da que devia ser escrita, com o fim de prejudicar direito, criar obrigação ou alterar a verdade sobre fatos juridicamente relevante, é crime.</div>
     </body><script>window.onload=()=>setTimeout(()=>window.print(),800)</script></html>`;
     const w = window.open('','_blank'); w.document.write(html); w.document.close();
 }
